@@ -1,0 +1,12 @@
+# BAT BUOC: khong bao gio push API key len GitHub
+.env
+
+# Vector store cache (dung lai bang lenh chay dau tien)
+chroma_travel_info/
+
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.claude/
