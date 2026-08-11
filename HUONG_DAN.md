@@ -351,18 +351,20 @@ Lỡ push key rồi thì vào https://aistudio.google.com/app/apikey xoá key đ
 xoá commit **không đủ**, key vẫn nằm trong lịch sử.
 
 ### 10.2 Lần đầu đưa lên GitHub
-1. Vào https://github.com/new → đặt tên repo (gợi ý `cornwall-travel-agent`) →
-   **KHÔNG** tích "Add a README file" / "Add .gitignore" (repo đã có sẵn rồi, tích vào sẽ xung đột).
-2. Chạy các lệnh sau (thay `USERNAME` bằng tài khoản GitHub của bạn):
+1. Vào https://github.com/new → đặt tên repo `travel-ai-agent` →
+   **KHÔNG** tích "Add a README file" / "Add .gitignore" / "Choose a license"
+   (repo đã có sẵn nội dung, tích vào sẽ xung đột khi push).
+2. Chạy các lệnh sau:
 
 ```bash
 cd D:\langgraph-agent-lab
-git remote add origin https://github.com/USERNAME/cornwall-travel-agent.git
+git remote add origin https://github.com/Hieuxuan1112/travel-ai-agent.git
 git branch -M main
 git push -u origin main
 ```
 
-3. Sửa 3 chỗ `USERNAME` trong `README.md` (badge CI và link clone) rồi commit lại.
+3. Nếu tài khoản GitHub của bạn KHÔNG phải `Hieuxuan1112`, sửa lại tên đó trong
+   `README.md` (badge CI + link clone) và trong lệnh `git remote add` ở trên.
 4. Vào tab **Actions** trên GitHub xem CI chạy — badge xanh là đẹp hồ sơ.
 
 ### 10.3 Các ngày sau: thêm tính năng / sửa lỗi

@@ -1,6 +1,6 @@
 # 🏖️ Cornwall Travel Agent — a tool-calling LLM agent (LangChain · LangGraph · MCP)
 
-[![CI](https://github.com/USERNAME/cornwall-travel-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/USERNAME/cornwall-travel-agent/actions/workflows/ci.yml)
+[![CI](https://github.com/Hieuxuan1112/travel-ai-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Hieuxuan1112/travel-ai-agent/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12-blue)
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-ff69b4)
 ![MCP](https://img.shields.io/badge/MCP-stdio_server-purple)
@@ -81,8 +81,8 @@ graph-wiring code.
 ## Quickstart
 
 ```bash
-git clone https://github.com/USERNAME/cornwall-travel-agent.git
-cd cornwall-travel-agent
+git clone https://github.com/Hieuxuan1112/travel-ai-agent.git
+cd travel-ai-agent
 python -m venv venv && venv\Scripts\activate      # Windows (use source venv/bin/activate elsewhere)
 pip install -r requirements.txt
 copy .env.example .env                            # then paste your key
