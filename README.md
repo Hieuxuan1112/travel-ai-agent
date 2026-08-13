@@ -31,6 +31,7 @@ Assistant: Two beach towns with clear skies right now are St Ives (12.9 °C) and
 | 🔎 **Tool 1 — semantic search** | Wikivoyage pages → chunks → Gemini embeddings → Chroma, cached on disk so restarts are instant |
 | 🌤️ **Tool 2 — live weather** | Open-Meteo geocoding + current conditions for any city worldwide, **no API key required**. A `country` argument lets the LLM disambiguate towns that share a name (Falmouth UK vs Falmouth US) |
 | 🔌 **MCP server** | The same two tools are exposed over the Model Context Protocol, so any MCP client (Claude Desktop, Cursor, or `main_04_mcp.py`) can use them across a process boundary |
+| 🌐 **HTTP API with SSE streaming** | FastAPI service exposing the agent: `POST /chat` for plain JSON, `GET /chat/stream` pushing `tool_call` / `tool_result` / `answer` events over Server-Sent Events as they happen, `/healthz` for probes, and auto-generated OpenAPI docs at `/docs` |
 | 🖥️ **Streaming web UI** | Streamlit chat that shows every reasoning step, tool call and tool result live, plus latency and tool-call counters |
 | 📊 **Evaluated, not just demoed** | 8-case suite measuring tool-selection accuracy and answer quality (LLM-as-judge) → [`evals/results.md`](evals/results.md) |
 | ✅ **Tested & linted in CI** | Unit tests run with no network and no API key (services are faked), ruff-clean, GitHub Actions on every push |
@@ -42,6 +43,7 @@ flowchart TB
     subgraph clients["Clients"]
         CLI["main_02_02.py<br/>CLI chat loop"]
         UI["app.py<br/>Streamlit UI"]
+        API["api.py<br/>FastAPI + SSE"]
         MCPC["main_04_mcp.py<br/>MCP client"]
         DESKTOP["Claude Desktop<br/>Cursor, ..."]
     end
@@ -66,6 +68,7 @@ flowchart TB
 
     CLI --> LLM
     UI --> LLM
+    API -->|"SSE events"| LLM
     MCPC -->|"JSON-RPC / stdio"| SERVER["mcp_server.py"]
     DESKTOP -->|"JSON-RPC / stdio"| SERVER
     SERVER --> T1 & T2
@@ -97,7 +100,31 @@ python main_02_02.py "What is the weather in St Ives, Cornwall?"   # one-shot
 python main_03_01.py                              # same agent, prebuilt ReAct component
 python main_04_mcp.py                             # tools loaded over MCP instead of imported
 streamlit run app.py                              # web UI at http://localhost:8501
+python api.py                                     # HTTP API at http://127.0.0.1:8000
 ```
+
+With the API running, `/docs` gives you an interactive OpenAPI page, `/` a minimal SSE
+demo, and the stream is plain text you can watch with curl:
+
+```bash
+curl -N "http://127.0.0.1:8000/chat/stream?q=Suggest%20two%20Cornwall%20beach%20towns%20with%20nice%20weather"
+```
+
+```
+event: tool_call
+data: {"name": "search_travel_info", "args": {"query": "popular beach towns in Cornwall"}}
+
+event: tool_call
+data: {"name": "weather_forecast", "args": {"town": "St Ives", "country": "United Kingdom"}}
+
+event: answer
+data: {"text": "Two excellent beach towns in Cornwall are St Ives and Falmouth ..."}
+
+event: done
+data: {"tool_calls": 3, "elapsed_seconds": 9.75}
+```
+
+Events arrive as the agent works, not batched at the end — the whole point of SSE.
 
 First launch downloads four Wikivoyage pages and embeds them (~1 min); afterwards the
 vector store is loaded from `chroma_travel_info/`.
@@ -149,17 +176,20 @@ main_02_02.py      agent with the graph built by hand (LLM node, tool node, cond
 main_03_01.py      same agent via create_react_agent
 main_04_mcp.py     agent that loads its tools over MCP
 mcp_server.py      MCP server exposing the two tools
+api.py             FastAPI service: JSON endpoint + SSE stream + OpenAPI docs
 app.py             Streamlit UI with live reasoning trace
 evals/             evaluation harness + results
 tests/             unit tests (offline)
 docs/graph.png     agent graph rendered by LangGraph
 HUONG_DAN.md       Vietnamese walkthrough of the architecture
+docs/HOC_FASTAPI_SSE.md   Vietnamese deep-dive on the API and SSE layer
 ```
 
 ## Stack
 
 Python 3.12 · LangChain 1.3 · LangGraph 1.2 · Gemini (`gemini-3.1-flash-lite` +
-`gemini-embedding-001`) · Chroma · MCP 1.29 · Streamlit · pytest · ruff · GitHub Actions
+`gemini-embedding-001`) · Chroma · MCP 1.29 · FastAPI · uvicorn · Streamlit · pytest ·
+ruff · GitHub Actions
 
 ## Credits
 

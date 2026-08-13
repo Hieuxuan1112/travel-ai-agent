@@ -12,3 +12,7 @@ langchain-mcp-adapters==0.3.2
 
 # Web UI (app.py)
 streamlit==1.61.1
+
+# HTTP API + SSE (api.py)
+fastapi==0.121.3
+uvicorn[standard]==0.40.0

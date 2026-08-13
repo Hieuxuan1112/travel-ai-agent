@@ -305,6 +305,7 @@ vài nghìn token. Embedding chỉ chạy một lần rồi cache xuống đĩa.
 | File | Là gì | Chạy thế nào |
 |---|---|---|
 | `app.py` | Giao diện web Streamlit, hiện **realtime** từng bước agent gọi tool nào, kết quả gì, mất bao lâu | `venv\Scripts\streamlit.exe run app.py` |
+| `api.py` | **HTTP API** cho agent: `POST /chat` trả JSON, `GET /chat/stream` đẩy sự kiện realtime bằng SSE, `/docs` tài liệu tự sinh. Học chi tiết ở [docs/HOC_FASTAPI_SSE.md](docs/HOC_FASTAPI_SSE.md) | `venv\Scripts\python.exe api.py` |
 | `mcp_server.py` | Đóng gói 2 tool thành **MCP server** chuẩn giao thức — cắm được vào Claude Desktop / Cursor | tự chạy khi client gọi |
 | `main_04_mcp.py` | Agent lấy tool **qua giao thức MCP** (2 tiến trình tách rời) thay vì import trực tiếp | `venv\Scripts\python.exe main_04_mcp.py` |
 | `evals/eval_agent.py` | Chấm điểm agent: độ chính xác chọn tool + LLM chấm chất lượng trả lời | `venv\Scripts\python.exe evals\eval_agent.py` |
