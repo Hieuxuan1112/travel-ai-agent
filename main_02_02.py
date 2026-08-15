@@ -90,14 +90,18 @@ def get_travel_info_vectorstore() -> Chroma:
     if _ti_vectorstore_client is None:
         if not os.environ.get("GOOGLE_API_KEY"):
             raise RuntimeError("Set the GOOGLE_API_KEY in .env and re-run.")
+        cached = None
         if os.path.isdir(PERSIST_DIR):
             # Da build lan truoc -> nap lai tu dia, khong ton tien embedding nua.
             print("Loading cached vector store ...")
-            _ti_vectorstore_client = Chroma(
-                persist_directory=PERSIST_DIR, embedding_function=embeddings
-            )
-        else:
-            _ti_vectorstore_client = build_vectorstore(UK_DESTINATIONS)
+            cached = Chroma(persist_directory=PERSIST_DIR, embedding_function=embeddings)
+            # Thu muc TON TAI khong co nghia la CO DU LIEU: khi gan Docker volume
+            # vao day, thu muc luon ton tai nhung rong -> phai dung lai tu dau,
+            # neu khong agent chay binh thuong nhung tool tim kiem tra ve rong.
+            if not cached.get(limit=1)["ids"]:
+                print("Cached vector store is empty - rebuilding.")
+                cached = None
+        _ti_vectorstore_client = cached or build_vectorstore(UK_DESTINATIONS)
         print("Vector store ready.\n")
     return _ti_vectorstore_client
 

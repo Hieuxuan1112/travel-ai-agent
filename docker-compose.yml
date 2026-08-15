@@ -1,0 +1,51 @@
+# Chay ca he thong bang MOT lenh:  docker compose up --build
+#
+#   api  -> http://localhost:8000   (FastAPI + SSE, co /docs)
+#   ui   -> http://localhost:8501   (giao dien Streamlit)
+#
+# Hai service dung CHUNG mot anh Docker va CHUNG mot volume chua vector store,
+# nen kho kien thuc chi phai dung mot lan.
+
+services:
+  api:
+    build: .
+    image: travel-ai-agent:latest
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env                      # nap GOOGLE_API_KEY; file nay khong bao gio len git
+    volumes:
+      # Volume co ten: du xoa container, vector store van con -> lan sau bat len
+      # la chay ngay, khong phai tao embedding lai (do ton tien va thoi gian).
+      - chroma_data:/app/chroma_travel_info
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 180s          # lan dau con tai trang web + tao embedding
+      retries: 3
+    restart: unless-stopped
+
+  ui:
+    build: .                      # cung context -> Docker dung lai cache, khong build lai tu dau
+    image: travel-ai-agent:latest
+    command: >
+      streamlit run app.py
+      --server.port=8501
+      --server.address=0.0.0.0
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    volumes:
+      - chroma_data:/app/chroma_travel_info
+    depends_on:
+      api:
+        condition: service_healthy
+      # Doi api "khoe" roi moi bat ui. Khong chi de cho dep: api la thang dung
+      # vector store, neu hai container cung dung mot luc thi tranh chap file.
+    restart: unless-stopped
+
+volumes:
+  chroma_data:

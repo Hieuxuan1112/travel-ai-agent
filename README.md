@@ -145,6 +145,22 @@ Add this to `claude_desktop_config.json` and the two tools show up in any conver
 }
 ```
 
+## Docker
+
+```bash
+docker compose up --build     # API on :8000, Streamlit UI on :8501
+```
+
+Multi-stage build (deps installed in a builder stage, only the resulting venv is copied
+into the runtime image), runs as a non-root user, ships a `HEALTHCHECK` that polls
+`/healthz`, and reads `$PORT` so the same image runs unchanged on Cloud Run. Compose
+wires both services to one named volume holding the vector store, so restarts don't
+re-embed, and gates the UI on `condition: service_healthy` to avoid two processes
+building the store at once.
+
+Notes for anyone reading the image: 1.4 GB (Chroma pulls in onnxruntime), first build
+~4 min, rebuilds after a code change ~15 s thanks to layer ordering.
+
 ## Evaluation
 
 `python evals/eval_agent.py` replays a fixed question set, reads the real message history
@@ -183,6 +199,9 @@ tests/             unit tests (offline)
 docs/graph.png     agent graph rendered by LangGraph
 HUONG_DAN.md       Vietnamese walkthrough of the architecture
 docs/HOC_FASTAPI_SSE.md   Vietnamese deep-dive on the API and SSE layer
+docs/HOC_DOCKER.md        Vietnamese deep-dive on the Docker/compose setup
+Dockerfile                multi-stage, non-root, healthcheck, $PORT-aware
+docker-compose.yml        api + ui sharing one image and one vector-store volume
 ```
 
 ## Stack

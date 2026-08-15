@@ -311,7 +311,7 @@ vài nghìn token. Embedding chỉ chạy một lần rồi cache xuống đĩa.
 | `evals/eval_agent.py` | Chấm điểm agent: độ chính xác chọn tool + LLM chấm chất lượng trả lời | `venv\Scripts\python.exe evals\eval_agent.py` |
 | `tests/test_tools.py` | 7 unit test, **không cần mạng, không cần API key** (giả lập `requests`) | `venv\Scripts\python.exe -m pytest tests -q` |
 | `.github/workflows/ci.yml` | GitHub Actions: tự lint + test mỗi lần push | tự động trên GitHub |
-| `Dockerfile` | Đóng gói chạy bằng Docker | `docker build -t travel-agent .` |
+| `Dockerfile` + `docker-compose.yml` | Đóng gói chạy bằng Docker: multi-stage, non-root, healthcheck. Học chi tiết ở [docs/HOC_DOCKER.md](docs/HOC_DOCKER.md) | `docker compose up --build` |
 | `make_graph_image.py` | Xuất sơ đồ đồ thị agent ra `docs/graph.png` | `venv\Scripts\python.exe make_graph_image.py` |
 
 **Kết quả eval đã đo được:** chọn đúng tool **8/8 (100%)**, LLM chấm chất lượng **4.4/5**,

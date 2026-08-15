@@ -1,0 +1,19 @@
+# Nhung thu KHONG duoc dua vao anh Docker.
+# Tac dung kep: anh nho hon, build nhanh hon, va khong lo lot secret vao anh.
+
+# BAT BUOC: khong bao gio dong goi key vao anh
+.env
+
+# Moi truong ao cua Windows - vo dung (va hong) trong container Linux
+venv/
+
+# Vector store: de container tu dung lai, hoac gan volume o docker-compose
+chroma_travel_info/
+
+.git/
+.github/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+tests/

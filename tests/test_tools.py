@@ -116,6 +116,26 @@ def test_search_tool_joins_top_documents(monkeypatch):
     assert "doc4" not in result
 
 
+def test_existing_but_empty_store_directory_triggers_a_rebuild(monkeypatch, tmp_path):
+    """Docker volume moi gan vao: thu muc co san nhung rong -> phai build lai.
+
+    Neu chi kiem tra os.path.isdir thi agent van chay ma tool tim kiem tra ve rong.
+    """
+    monkeypatch.setattr(lab, "PERSIST_DIR", str(tmp_path))  # thu muc ton tai, rong
+    monkeypatch.setattr(lab, "_ti_vectorstore_client", None)
+
+    class _EmptyStore:
+        def get(self, limit=None):
+            return {"ids": []}
+
+    rebuilt = []
+    monkeypatch.setattr(lab, "Chroma", lambda **kwargs: _EmptyStore())
+    monkeypatch.setattr(lab, "build_vectorstore", lambda dests: rebuilt.append(dests) or "REBUILT")
+
+    assert lab.get_travel_info_vectorstore() == "REBUILT"
+    assert rebuilt == [lab.UK_DESTINATIONS]
+
+
 def test_both_tools_are_registered_with_descriptions():
     """Mo ta tool la thu LLM dua vao de chon tool -> khong duoc de trong."""
     names = {t.name for t in lab.TOOLS}
