@@ -300,6 +300,9 @@ vài nghìn token. Embedding chỉ chạy một lần rồi cache xuống đĩa.
 
 ---
 
+> **Muốn hiểu TOÀN BỘ sản phẩm** (kiến trúc, luồng chạy, vì sao thiết kế vậy, số liệu
+> thật, 20 câu phỏng vấn kèm đáp án): đọc [docs/MENTOR.md](docs/MENTOR.md).
+
 ## 9. Phần mở rộng (ngoài yêu cầu bài lab — để đưa lên GitHub/CV)
 
 | File | Là gì | Chạy thế nào |
@@ -312,6 +315,7 @@ vài nghìn token. Embedding chỉ chạy một lần rồi cache xuống đĩa.
 | `tests/test_tools.py` | 7 unit test, **không cần mạng, không cần API key** (giả lập `requests`) | `venv\Scripts\python.exe -m pytest tests -q` |
 | `.github/workflows/ci.yml` | GitHub Actions: tự lint + test mỗi lần push | tự động trên GitHub |
 | `Dockerfile` + `docker-compose.yml` | Đóng gói chạy bằng Docker: multi-stage, non-root, healthcheck. Học chi tiết ở [docs/HOC_DOCKER.md](docs/HOC_DOCKER.md) | `docker compose up --build` |
+| `metrics.py` + `monitoring/` | **Prometheus + Grafana**: đo p95 latency, tool nào gọi bao nhiêu lần / lỗi bao nhiêu, token và **chi phí USD**. Học chi tiết ở [docs/HOC_PROMETHEUS.md](docs/HOC_PROMETHEUS.md) | dashboard tại http://localhost:3000/d/travel-agent |
 | `make_graph_image.py` | Xuất sơ đồ đồ thị agent ra `docs/graph.png` | `venv\Scripts\python.exe make_graph_image.py` |
 
 **Kết quả eval đã đo được:** chọn đúng tool **8/8 (100%)**, LLM chấm chất lượng **4.4/5**,
