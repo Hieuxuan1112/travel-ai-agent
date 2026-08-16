@@ -1,0 +1,15 @@
+# "Provisioning": khai bao san nguon du lieu bang file, de Grafana bat len la co
+# ngay, khong phai bam tay trong giao dien. Nho vay dashboard chay duoc tren may
+# bat ky ai clone repo ve.
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    # uid co dinh: dashboard json tro toi dung uid nay, khong de Grafana tu sinh
+    uid: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false

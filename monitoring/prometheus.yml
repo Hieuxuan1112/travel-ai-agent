@@ -1,0 +1,18 @@
+# Prometheus khong "nhan" so lieu - no CHU DONG di hut (pull) tu tung dich.
+# Cu 15 giay no goi GET http://api:8000/metrics mot lan roi luu lai theo thoi gian.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: travel-agent-api
+    metrics_path: /metrics
+    static_configs:
+      # "api" la TEN SERVICE trong docker-compose: cac container goi nhau bang
+      # ten service, khong dung localhost (localhost la chinh container do).
+      - targets: ["api:8000"]
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

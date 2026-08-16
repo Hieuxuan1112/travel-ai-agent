@@ -1,0 +1,14 @@
+apiVersion: 1
+
+providers:
+  - name: travel-agent
+    orgId: 1
+    folder: ""
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      # Thu muc nay duoc gan vao container o docker-compose.yml
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
