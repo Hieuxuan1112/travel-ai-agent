@@ -20,11 +20,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field
 
 import main_02_02 as lab
+import metrics
 
 # ===========================================================================
 # 1. VONG DOI UNG DUNG (lifespan)
@@ -95,6 +97,17 @@ def healthz() -> dict:
     return {"status": "ok", "model": lab.CHAT_MODEL, "weather_source": lab.WEATHER_MODE}
 
 
+@app.get("/metrics", tags=["system"], include_in_schema=False)
+def prometheus_metrics() -> PlainTextResponse:
+    """Prometheus goi vao day 15 giay mot lan de "hut" so lieu ve.
+
+    Tra ve text thuan, moi dong mot chi so - mo bang trinh duyet doc duoc luon.
+    """
+    return PlainTextResponse(
+        generate_latest(metrics.build_registry()), media_type=CONTENT_TYPE_LATEST
+    )
+
+
 @app.post("/chat", response_model=ChatResponse, tags=["agent"])
 def chat(request: ChatRequest) -> ChatResponse:
     """Hoi mot cau, doi agent lam xong, tra ve mot cuc JSON.
@@ -103,9 +116,19 @@ def chat(request: ChatRequest) -> ChatResponse:
     chuyen gi dang xay ra -> vi vay moi co /chat/stream ben duoi.
     """
     started = time.time()
-    result = lab.travel_info_agent.invoke(
-        {"messages": [HumanMessage(content=request.question)]}
-    )
+    metrics.IN_FLIGHT.inc()
+    try:
+        result = lab.travel_info_agent.invoke(
+            {"messages": [HumanMessage(content=request.question)]}
+        )
+    except Exception:
+        metrics.REQUESTS.labels(endpoint="/chat", status="error").inc()
+        raise
+    finally:
+        metrics.IN_FLIGHT.dec()
+        metrics.REQUEST_DURATION.labels(endpoint="/chat").observe(time.time() - started)
+
+    metrics.REQUESTS.labels(endpoint="/chat", status="ok").inc()
 
     tool_calls = [
         ToolCallInfo(name=call["name"], args=call["args"])
@@ -143,6 +166,8 @@ def agent_events(question: str) -> Iterator[str]:
     """
     started = time.time()
     tool_calls = 0
+    status = "error"
+    metrics.IN_FLIGHT.inc()
     yield sse("start", {"question": question, "model": lab.CHAT_MODEL})
 
     try:
@@ -162,10 +187,17 @@ def agent_events(question: str) -> Iterator[str]:
                         })
                     elif isinstance(message, AIMessage):
                         yield sse("answer", {"text": lab.answer_text(message)})
+        status = "ok"
     except Exception as exc:
         # Loi giua chung: bao cho client biet roi dong stream tu te, khong treo.
         yield sse("error", {"message": str(exc)})
         return
+    finally:
+        # finally chay ca khi client ngat giua chung (generator bi dong)
+        # -> so lieu khong bi ho.
+        metrics.IN_FLIGHT.dec()
+        metrics.REQUEST_DURATION.labels(endpoint="/chat/stream").observe(time.time() - started)
+        metrics.REQUESTS.labels(endpoint="/chat/stream", status=status).inc()
 
     yield sse("done", {
         "tool_calls": tool_calls,

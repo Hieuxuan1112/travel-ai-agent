@@ -16,3 +16,6 @@ streamlit==1.61.1
 # HTTP API + SSE (api.py)
 fastapi==0.121.3
 uvicorn[standard]==0.40.0
+
+# Prometheus metrics (metrics.py, endpoint /metrics)
+prometheus-client==0.24.1

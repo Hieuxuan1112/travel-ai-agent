@@ -30,6 +30,8 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langgraph.graph import StateGraph
 from langgraph.prebuilt import tools_condition
 
+import metrics
+
 # Console Windows mac dinh la cp1252 -> khong go duoc tieng Viet. Ep UTF-8 cho an toan.
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -268,7 +270,15 @@ class ToolsExecutionNode:
             tool_name = tool_call["name"]
             tool_args = tool_call["args"]
             tool = self._tools_by_name[tool_name]
-            result = tool.invoke(tool_args)
+
+            metrics.TOOL_CALLS.labels(tool=tool_name).inc()
+            with metrics.TOOL_DURATION.labels(tool=tool_name).time():
+                result = tool.invoke(tool_args)
+            # Tool cua ta khong nem exception ma tra dict co khoa "error"
+            # (de LLM tu xu ly) -> phai dem loi theo kieu do.
+            if isinstance(result, dict) and "error" in result:
+                metrics.TOOL_ERRORS.labels(tool=tool_name).inc()
+
             # In ra man hinh de nhin thay agent that su goi tool nao, tham so gi.
             print(f"   [tool] {tool_name}({tool_args}) -> {str(result)[:120]}")
             tool_messages.append(
@@ -299,6 +309,9 @@ def llm_node(state: AgentState):
     # SystemMessage len DAU danh sach tam thoi -> khong lam ban state.
     current_messages = [SystemMessage(content=SYSTEM_PROMPT), *state["messages"]]
     response_message = llm_with_tools.invoke(current_messages)
+    # Dem token + tien ngay tai day: moi vong ReAct la mot lan goi model, nen
+    # mot cau hoi 3 tool se tinh tien 4 lan chu khong phai 1.
+    metrics.record_llm_usage(CHAT_MODEL, getattr(response_message, "usage_metadata", None))
     return {"messages": [response_message]}
 
 
