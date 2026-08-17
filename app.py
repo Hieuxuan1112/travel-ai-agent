@@ -91,7 +91,9 @@ if prompt := st.chat_input("e.g. Suggest two Cornwall beach towns with nice weat
                             final_answer = lab.answer_text(message)
             status.update(label="Done", state="complete", expanded=False)
 
-        st.markdown(final_answer)
+        # Hiem khi model tra ve luot cuoi khong co chu nao (chi co khoi suy nghi).
+        # Tren ban demo cong khai, mot o trong trong nhu app hong -> luon noi gi do.
+        st.markdown(final_answer or "_No text came back from the model. Try rephrasing._")
         trace_box.caption(
             f"{tool_calls} tool call(s) · {time.time() - started:.1f}s · model {lab.CHAT_MODEL}"
         )
