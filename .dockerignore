@@ -7,8 +7,9 @@
 # Moi truong ao cua Windows - vo dung (va hong) trong container Linux
 venv/
 
-# Vector store: de container tu dung lai, hoac gan volume o docker-compose
-chroma_travel_info/
+# Vector store CO dua vao anh: container bat len la chay ngay, khong ton thoi gian
+# va tien tao embedding. Volume trong docker-compose se duoc Docker tu do day
+# du lieu nay vao trong lan chay dau.
 
 .git/
 .github/

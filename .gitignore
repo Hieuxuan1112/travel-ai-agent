@@ -1,8 +1,9 @@
 # BAT BUOC: khong bao gio push API key len GitHub
 .env
 
-# Vector store cache (dung lai bang lenh chay dau tien)
-chroma_travel_info/
+# Vector store CO commit (3,3 MB): clone ve hoac deploy len la chay duoc ngay,
+# khong phai tai lai 4 trang web va tra tien embedding moi lan khoi dong.
+# Muon dung lai: xoa thu muc chroma_travel_info/ roi chay lai, code tu dung.
 
 venv/
 __pycache__/
