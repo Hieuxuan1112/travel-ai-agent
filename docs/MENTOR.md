@@ -669,7 +669,8 @@ Nói ra được giới hạn là dấu hiệu của người hiểu hệ thốn
 
 | Giới hạn | Ảnh hưởng |
 |---|---|
-| **Chưa deploy công khai** | Chỉ chạy localhost, chưa có URL sống. Đã chuẩn bị xong mọi thứ để deploy (mục 20) |
+| Bản deploy công khai không có rate limit | Giới hạn tần suất nằm trong `api.py`, còn bản chạy công khai là `app.py` (Streamlit) |
+| Chỉ giao diện Streamlit được deploy | Bản FastAPI (`/docs`, `/chat/stream`, `/metrics`) mới chỉ chạy local |
 | Kho kiến thức chỉ 4 trang về Cornwall | Hỏi vùng khác là không có dữ liệu |
 | Không nhớ hội thoại nhiều lượt | Hỏi "còn thị trấn kia thì sao?" là không hiểu |
 | Chỉ tìm theo vector, chưa hybrid | Tên riêng/số hiệu tìm kém hơn nếu có thêm BM25 |
@@ -740,9 +741,10 @@ Nói ra được giới hạn là dấu hiệu của người hiểu hệ thốn
 22. *Vì sao commit cả vector store 3,3 MB vào git?* → Để cold start phục vụ được ngay thay
     vì tải lại 4 trang web và trả tiền embedding mỗi lần khởi động. Đánh đổi: file nhị phân
     trong git; chấp nhận được vì nhỏ và ít thay đổi.
-23. *Deploy chỗ nào và vì sao?* → Hugging Face Spaces bản Docker: miễn phí, không cần thẻ
-    nên không thể phát sinh chi phí, và dùng lại đúng Dockerfile. Cloud Run chuyên nghiệp
-    hơn nhưng bắt buộc gắn thẻ.
+23. *Deploy chỗ nào và vì sao?* → Streamlit Community Cloud: miễn phí, không cần thẻ nên
+    không thể phát sinh chi phí, và chạy thẳng `app.py` sẵn có. Kế hoạch ban đầu là Docker
+    Space trên Hugging Face nhưng tính năng đó đã chuyển sang gói PRO — phải đổi hướng khi
+    làm thật. Cloud Run chuyên nghiệp hơn nhưng bắt buộc gắn thẻ.
 
 ---
 
@@ -971,47 +973,35 @@ chunks = 92
 
 Dòng `Loading cached` thay vì `Downloading destination pages` chính là bằng chứng.
 
-### Deploy: chọn nền tảng nào
+### Deploy: chọn nền tảng nào, và một kế hoạch bị thực tế bác bỏ
 
-| Nền tảng | Cần thẻ? | Chạy Docker? | Ghi chú |
+Kế hoạch ban đầu là **Hugging Face Spaces bản Docker** — vì nó dùng lại đúng `Dockerfile`
+đã có, và image đã chạy non-root **uid 1000** đúng như Spaces yêu cầu.
+
+Nhưng khi bấm tạo Space thì ô Docker hiện nhãn 🔒 **Paid**. Kiểm tra trang pricing của
+Hugging Face thấy dòng *"Host ZeroGPU, Gradio & Docker Spaces"* nằm trong gói **PRO
+($9/tháng)**. Yêu cầu đặt ra là không tốn đồng nào, nên phải đổi hướng ngay tại chỗ.
+
+| Nền tảng | Cần thẻ? | Chạy được gì | Kết luận |
 |---|---|---|---|
-| **Hugging Face Spaces** ✅ | **Không** | Có | Không có thẻ thì **không thể** phát sinh tiền |
-| Google Cloud Run | Có | Có | Trông chuyên nghiệp hơn, free tier rộng, nhưng phải gắn thẻ |
-| Streamlit Community Cloud | Không | Không | Chỉ chạy được `app.py`, không chạy được API |
-| Vercel | — | Không hợp | Serverless, giới hạn ~250 MB và thời gian chạy ngắn — không hợp với agent 10 giây và thư viện nặng |
+| **Streamlit Community Cloud** ✅ | Không | `app.py` trực tiếp | **Đang dùng** |
+| Hugging Face Spaces (Docker) | Không, nhưng cần PRO $9/tháng | Dockerfile | Loại vì mất phí |
+| Google Cloud Run | **Có thẻ** | Dockerfile | Chuyên nghiệp nhất nhưng phải gắn thẻ |
+| Vercel | — | Không hợp | Serverless: thời gian chạy ngắn, thư viện nặng không vừa |
 
-Chọn Hugging Face vì yêu cầu là **không tốn đồng nào**, và nó dùng lại đúng `Dockerfile`
-đã có. Image đã sẵn sàng: chạy non-root **uid 1000** — đúng thứ Spaces yêu cầu.
+Streamlit Cloud thắng vì hai thứ **đã chuẩn bị từ trước** khiến nó không tốn thêm công sức
+nào: `app.py` đã có sẵn nên không phải viết lại giao diện, và vector store đã commit vào
+repo nên nền tảng clone về là chạy ngay.
 
-### Một vấn đề nhỏ nhưng phải xử lý gọn
-
-Hugging Face đọc cấu hình Space từ khối YAML ở đầu `README.md`:
-
-```yaml
----
-sdk: docker
-app_port: 8000
----
-```
-
-Nhưng để khối đó trong README trên GitHub thì GitHub render nó thành **một cái bảng xấu
-ngay đầu trang portfolio**. Giải pháp: giữ `main` sạch, chỉ chèn YAML ở một nhánh riêng
-dành cho deploy:
-
-```bash
-git checkout -B hf-space main      # tạo lại nhánh deploy từ main
-python deploy/make_hf_readme.py    # chèn YAML vào README
-git commit -am "chore: Hugging Face Space metadata"
-git push -f hf hf-space:main       # đẩy sang Space
-git checkout main                  # quay về nhánh sạch
-```
-
-Vì nhánh `hf-space` được **tạo lại từ đầu** mỗi lần (`checkout -B`) nên không bao giờ có
-xung đột khi merge. Script `deploy/make_hf_readme.py` cũng được viết để chạy nhiều lần
-không nhân đôi khối YAML.
+Bài học đáng nhớ hơn cả kỹ thuật: **điều kiện của nền tảng miễn phí thay đổi theo thời
+gian**. Kế hoạch deploy phải kiểm chứng bằng cách bấm thử, đừng tin vào tài liệu viết từ
+trước — kể cả tài liệu của chính mình.
 
 ### Trạng thái hiện tại
 
-Mọi thứ đã sẵn sàng, **chưa bấm deploy** vì bước đó cần tài khoản Hugging Face của bạn.
-Quy trình 7 bước đầy đủ nằm ở [DEPLOY_HF.md](DEPLOY_HF.md). Sau khi có URL, cần thêm hai
-chỗ: dòng live demo trong README và một bullet trong CV.
+**Đã chạy công khai:** https://travel-ai-agent-92l7axm85zjfj2kmqu5e4r.streamlit.app
+
+Streamlit Cloud tự deploy lại mỗi lần push lên `main`, không phải làm gì thêm. Hai điểm
+còn hở, đã ghi ở mục 15: bản công khai chạy `app.py` nên **không có rate limit** (cơ chế đó
+nằm trong `api.py`), và bản FastAPI kèm `/metrics` vẫn chỉ chạy local vì muốn deploy nó
+thì cần nền tảng chạy Docker. Chi tiết ở [DEPLOY.md](DEPLOY.md).

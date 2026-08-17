@@ -5,6 +5,10 @@
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-ff69b4)
 ![MCP](https://img.shields.io/badge/MCP-stdio_server-purple)
 
+### ▶ [Try it live](https://travel-ai-agent-92l7axm85zjfj2kmqu5e4r.streamlit.app)
+
+*(free tier — the app may need ~30 s to wake up on the first visit)*
+
 A ReAct agent that answers travel questions about Cornwall by combining **two tools**:
 semantic search over a Wikivoyage knowledge base, and **live weather** for any city on
 earth. The agent decides by itself which tool to call, in what order, and how many times —
@@ -150,9 +154,11 @@ embed on first run — delete `chroma_travel_info/` if you want it rebuilt from 
 
 ### Deploy
 
-`docs/DEPLOY_HF.md` walks through publishing this as a free public Space on Hugging Face
-(no credit card): the image already runs non-root on the uid Spaces expects, carries the
-vector store so cold starts serve immediately, and rate-limits callers per IP.
+The Streamlit UI is live on Streamlit Community Cloud — free, no credit card, redeployed
+automatically on every push to `main`. Because the vector store is committed to the repo,
+a cold start serves traffic without re-downloading or re-embedding anything.
+`docs/DEPLOY.md` covers the setup, the platform comparison behind the choice, and what it
+would take to host the FastAPI service as well.
 
 ### Use the tools from Claude Desktop
 
@@ -229,8 +235,7 @@ docs/MENTOR.md            Vietnamese full guide: architecture, flow, trade-offs,
 docs/HOC_FASTAPI_SSE.md   Vietnamese deep-dive on the API and SSE layer
 docs/HOC_DOCKER.md        Vietnamese deep-dive on the Docker/compose setup
 docs/HOC_PROMETHEUS.md    Vietnamese deep-dive on metrics, PromQL and Grafana
-docs/DEPLOY_HF.md         step-by-step deploy to Hugging Face Spaces (free, no card)
-deploy/                   Space metadata generator
+docs/DEPLOY.md            the live deployment, and the platform trade-offs behind it
 Dockerfile                multi-stage, non-root, healthcheck, $PORT-aware
 docker-compose.yml        api + ui sharing one image and one vector-store volume
 ```

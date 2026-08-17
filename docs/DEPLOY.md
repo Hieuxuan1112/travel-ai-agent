@@ -1,152 +1,91 @@
-# Deploy lên Hugging Face Spaces (0 đồng, không cần thẻ)
+# Deploy — bản đang chạy và các phương án khác
 
-Kết quả: một URL công khai dạng `https://<user>-travel-ai-agent.hf.space` — bấm vào là
-chạy, dán được vào CV.
+**Bản đang chạy (miễn phí, không cần thẻ):**
+https://travel-ai-agent-92l7axm85zjfj2kmqu5e4r.streamlit.app
 
-**Vì sao chọn Hugging Face:** miễn phí thật, **không cần thẻ tín dụng** nên không thể phát
-sinh tiền, và chạy được Docker nên dùng lại đúng `Dockerfile` của repo. Cloud Run trông
-chuyên nghiệp hơn nhưng bắt buộc gắn thẻ.
+Nền tảng: **Streamlit Community Cloud**, chạy trực tiếp `app.py` từ nhánh `main` của repo.
 
 ---
 
-## Chuẩn bị (đã xong sẵn trong repo)
+## 1. Vì sao chọn Streamlit Community Cloud
 
-| Việc | Trạng thái |
-|---|---|
-| Dockerfile chạy được, non-root uid 1000 (HF yêu cầu) | ✅ |
-| Vector store nướng sẵn trong image → khởi động tức thì, không tốn tiền embedding | ✅ đã kiểm chứng: 92 chunk, log ghi "Loading cached vector store" |
-| Rate limit chặn người lạ đốt quota | ✅ mặc định 30 câu/IP/giờ |
-| Script sinh metadata cho Space | ✅ `deploy/make_hf_readme.py` |
+Ban đầu tài liệu này hướng dẫn Hugging Face Spaces bản Docker. Khi làm thật thì phát hiện
+**Docker Space đã trở thành tính năng trả phí** — trang pricing của Hugging Face liệt kê
+*"Host ZeroGPU, Gradio & Docker Spaces"* trong gói PRO ($9/tháng). Vì yêu cầu là không tốn
+đồng nào nên phải đổi hướng.
 
----
+| Nền tảng | Cần thẻ? | Chạy được gì | Kết luận |
+|---|---|---|---|
+| **Streamlit Community Cloud** ✅ | Không | `app.py` trực tiếp | **Đang dùng.** Không tốn tiền, không phải viết thêm code |
+| Hugging Face Spaces (Docker) | Không, nhưng cần **PRO $9/tháng** | Dockerfile | Loại vì mất phí |
+| Hugging Face Spaces (Gradio) | Không | app viết bằng Gradio | Được, nhưng phải viết lại giao diện bằng Gradio |
+| Google Cloud Run | **Có thẻ** | Dockerfile | Chuyên nghiệp nhất, free tier rộng, nhưng bắt buộc gắn thẻ |
+| Render / Railway / Fly.io | Có | Dockerfile | Free tier 512 MB dễ hết RAM với `chromadb`, hoặc đã bỏ free tier |
+| Vercel | — | Không hợp | Serverless: giới hạn dung lượng và thời gian chạy ngắn, agent chạy 10 giây thì không hợp |
 
-## Bước 1 — Tạo tài khoản và Space
+Hai thứ chuẩn bị từ trước giúp việc deploy trơn tru:
 
-1. Đăng ký tại https://huggingface.co/join (miễn phí, không hỏi thẻ).
-2. Vào https://huggingface.co/new-space và điền:
+- **Vector store đã commit vào repo** (3,3 MB) → Streamlit clone về là chạy ngay, không phải
+  tải lại 4 trang Wikivoyage và không tốn tiền embedding ở mỗi lần khởi động.
+- **`app.py` đã có sẵn** → không phải viết lại giao diện cho nền tảng mới.
 
-| Ô | Điền |
-|---|---|
-| Space name | `travel-ai-agent` |
-| License | `mit` (hoặc để trống) |
-| **Space SDK** | **Docker** → chọn tiếp **Blank** |
-| Space hardware | `CPU basic · 2 vCPU · 16 GB` (Free) |
-| Visibility | **Public** |
+## 2. Các bước đã làm
 
-3. Bấm **Create Space**. Space hiện đang trống — bình thường.
+1. https://share.streamlit.io → **Sign in with GitHub**
+2. **Create app** → repo `Hieuxuan1112/travel-ai-agent`, branch `main`, main file `app.py`
+3. **Advanced settings → Secrets**, dán một dòng:
+   ```
+   GOOGLE_API_KEY = "..."
+   ```
+   Định dạng là TOML nên giá trị phải nằm trong dấu nháy kép.
+4. **Deploy**, chờ 5–10 phút cài thư viện.
 
-## Bước 2 — Nạp API key vào Space
+## 3. Cập nhật app sau này
 
-Trong Space vừa tạo: tab **Settings** → mục **Variables and secrets**:
+Không cần làm gì thủ công: **Streamlit Cloud tự deploy lại mỗi khi bạn push lên `main`**.
+Chỉ cần `git push`, đợi 1–2 phút rồi tải lại trang.
 
-- **New secret**: name `GOOGLE_API_KEY`, value là key Google AI Studio của bạn.
-  Phải là **secret**, không phải variable — variable hiện công khai cho mọi người xem.
-- **New variable**: name `RATE_LIMIT_PER_HOUR`, value `20`. Đây là chốt an toàn cho quota.
+Đổi secret hoặc cấu hình thì vào **Manage app** (góc dưới bên phải trang app) → Settings.
 
-## Bước 3 — Tạo token để đẩy code
+## 4. Nên làm: đổi URL cho gọn
 
-https://huggingface.co/settings/tokens → **Create new token** → quyền **Write** → copy lại
-(chỉ hiện một lần).
-
-## Bước 4 — Nối repo với Space
-
-Chạy trong `D:\langgraph-agent-lab>`, thay `USERNAME` bằng tên tài khoản Hugging Face:
-
-```bash
-git remote add hf https://huggingface.co/spaces/USERNAME/travel-ai-agent
-```
-
-## Bước 5 — Đẩy lên
-
-Hugging Face đọc cấu hình Space từ phần YAML ở đầu `README.md`, nhưng để YAML đó trong
-README trên GitHub thì GitHub render thành một cái bảng xấu ngay đầu trang. Nên ta để
-README trên `main` sạch, và chỉ chèn YAML ở một nhánh riêng dành cho deploy:
-
-```bash
-git checkout -B hf-space main
-```
-
-```bash
-venv\Scripts\python.exe deploy\make_hf_readme.py
-```
-
-```bash
-git commit -am "chore: add Hugging Face Space metadata"
-```
-
-```bash
-git push -f hf hf-space:main
-```
-
-```bash
-git checkout main
-```
-
-Khi được hỏi mật khẩu, dán **token** ở bước 3 (không phải mật khẩu tài khoản).
-
-Lệnh cuối đưa bạn về nhánh `main` sạch — **luôn nhớ bước này**, đừng làm việc tiếp trên
-nhánh `hf-space`.
-
-## Bước 6 — Chờ build
-
-Mở `https://huggingface.co/spaces/USERNAME/travel-ai-agent`, tab **Logs** để xem tiến
-trình. Build lần đầu **5–10 phút** (cài toàn bộ thư viện). Xong thì trạng thái chuyển
-**Running** và trang demo hiện ra.
-
-Kiểm tra nhanh:
+URL mặc định có đuôi ngẫu nhiên `travel-ai-agent-92l7axm85zjfj2kmqu5e4r.streamlit.app` —
+dán vào CV trông rất xấu. Vào **Manage app → Settings → General → Custom subdomain**, đổi
+thành `travel-ai-agent` (nếu chưa ai lấy) để có:
 
 ```
-https://USERNAME-travel-ai-agent.hf.space/healthz   → {"status":"ok",...}
-https://USERNAME-travel-ai-agent.hf.space/docs      → tài liệu API
-https://USERNAME-travel-ai-agent.hf.space/          → trang demo SSE
+https://travel-ai-agent.streamlit.app
 ```
 
----
+Đổi xong nhớ sửa lại link ở README và CV.
 
-## Bước 7 — Đưa URL vào README và CV
-
-Sau khi Space chạy, thêm vào đầu `README.md` (ngay dưới hàng badge):
-
-```markdown
-**🔴 Live demo:** https://USERNAME-travel-ai-agent.hf.space
-```
-
-và vào CV, sửa dòng dự án:
-
-```latex
-| \href{https://USERNAME-travel-ai-agent.hf.space}{live demo} | \href{https://github.com/Hieuxuan1112/travel-ai-agent}{github.com/Hieuxuan1112/travel-ai-agent}
-```
-
-Thêm một bullet vào mục dự án:
-
-```latex
-\item Deployed as a public Docker service with per-IP rate limiting; the vector store ships inside the image so cold starts serve traffic immediately.
-```
-
----
-
-## Cập nhật Space sau này
-
-Mỗi lần `main` có thay đổi mới muốn đưa lên Space, chạy lại đúng 5 lệnh ở **bước 5**.
-Nhánh `hf-space` được tạo lại từ `main` mỗi lần nên không bao giờ có xung đột.
-
----
-
-## Những điều cần biết
+## 5. Những điều cần biết
 
 | Điều | Chi tiết |
 |---|---|
-| **Space ngủ** | Không ai dùng 48 giờ thì Space ngủ; có người vào thì tự thức, lần đầu chờ ~30 giây |
-| **Ổ đĩa tạm** | Space restart là mất dữ liệu ghi thêm. Không sao vì vector store nằm sẵn trong image |
-| **Không thể mất tiền** | Không gắn thẻ thì không có gì để trừ |
-| **Quota Gemini** | Đây mới là thứ có thể cạn. Rate limit 20 câu/IP/giờ để chặn; free tier hết quota thì API báo 429, vẫn không mất tiền |
-| **Key có an toàn không** | Có, nếu để ở mục **Secrets**. Nó là biến môi trường trong container, người xem Space không đọc được |
-| **Repo công khai** | Code ai cũng xem được — đúng ý đồ, vì đây là portfolio |
+| **App ngủ** | Không ai dùng vài ngày thì app ngủ; người vào sau đó phải bấm nút đánh thức và chờ ~30 giây. Trước khi gửi CV nên vào một lần cho nó thức |
+| **Giới hạn RAM** | Khoảng 1 GB. `chromadb` khá nặng nên nếu kho kiến thức phình to thì có thể hết bộ nhớ |
+| **Không thể mất tiền** | Không gắn thẻ ở đâu cả |
+| **Quota Gemini** | Đây mới là thứ có thể cạn nếu nhiều người dùng. Free tier hết quota thì API báo lỗi, vẫn không mất tiền |
+| **Key có an toàn không** | Có. Nằm trong mục Secrets, không lộ trong repo hay trên giao diện |
+| **Rate limit** | Phần giới hạn tần suất nằm trong `api.py`, **không áp dụng** cho `app.py`. Xem mục 6 |
 
-## Nếu build lỗi
+## 6. Điểm còn hở: bản Streamlit không có rate limit
 
-Xem tab **Logs** trên Space. Hai lỗi hay gặp:
+Cơ chế chặn lạm dụng đã viết nằm ở `api.py`, mà bản deploy này chạy `app.py`. Nghĩa là
+người lạ vào demo có thể hỏi bao nhiêu tuỳ thích và đốt quota Gemini của bạn.
 
-- **Hết RAM khi build** — free tier 16 GB, image này 1,4 GB nên hiếm khi dính.
-- **`GOOGLE_API_KEY` chưa đặt** — app khởi động được nhưng gọi model là lỗi. Kiểm tra lại
-  bước 2, và nhớ **Restart Space** sau khi thêm secret.
+Hiện chấp nhận được vì key ở free tier nên hết quota chỉ bị chặn chứ không mất tiền, và URL
+chưa ai biết ngoài bạn. Nhưng nếu gửi CV cho nhiều nơi thì nên thêm giới hạn cho `app.py` —
+đếm số câu mỗi phiên bằng `st.session_state` là đủ ở mức demo.
+
+## 7. Nếu muốn deploy cả bản API (FastAPI + SSE)
+
+Streamlit Cloud chỉ chạy được app Streamlit. Muốn có URL cho `api.py` — kèm `/docs`,
+`/chat/stream` và `/metrics` — thì cần nền tảng chạy được Docker:
+
+- **Google Cloud Run** (cần thẻ, free tier rộng, scale về 0): `Dockerfile` đã đọc sẵn biến
+  `$PORT` của Cloud Run và chạy non-root, deploy được ngay không phải sửa gì.
+- **Hugging Face Space bản Docker**: cần PRO $9/tháng.
+
+Chưa làm vì yêu cầu là không tốn đồng nào.
