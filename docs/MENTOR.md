@@ -21,9 +21,11 @@
 13. [Những quyết định thiết kế và đánh đổi](#13-những-quyết-định-thiết-kế-và-đánh-đổi)
 14. [Những lỗi thật đã gặp](#14-những-lỗi-thật-đã-gặp)
 15. [Giới hạn hiện tại](#15-giới-hạn-hiện-tại)
-16. [20 câu phỏng vấn và cách trả lời](#16-20-câu-phỏng-vấn-và-cách-trả-lời)
+16. [23 câu phỏng vấn và cách trả lời](#16-23-câu-phỏng-vấn-và-cách-trả-lời)
 17. [Demo 5 phút](#17-demo-5-phút)
 18. [Từ điển thuật ngữ](#18-từ-điển-thuật-ngữ)
+19. [Giới hạn tần suất — chuẩn bị cho việc mở công khai](#19-giới-hạn-tần-suất--chuẩn-bị-cho-việc-mở-công-khai)
+20. [Đưa dữ liệu vào image và chuyện deploy](#20-đưa-dữ-liệu-vào-image-và-chuyện-deploy)
 
 ---
 
@@ -506,7 +508,7 @@ Biết và nói ra điểm yếu này trong phỏng vấn tạo ấn tượng t�
 
 ## 11. Test và CI
 
-**18 test, chạy hoàn toàn offline** — không gọi mạng, không cần API key, xong trong ~10 giây.
+**23 test, chạy hoàn toàn offline** — không gọi mạng, không cần API key, xong trong ~20 giây.
 
 Cách làm: thay thế thứ ở ngoài bằng đồ giả.
 
@@ -533,6 +535,8 @@ Những thứ được test — chọn lọc, mỗi cái ứng với một rủi
 | `test_stream_emits_events_in_order` | Hợp đồng SSE: đúng thứ tự start→tool→answer→done |
 | `test_stream_reports_errors_instead_of_crashing` | Lỗi giữa stream báo bằng event, không đứt ngang |
 | `test_unknown_model_counts_tokens_but_not_cost` | Không bịa số tiền cho model lạ |
+| `test_limit_is_per_client_not_global` | Người này tiêu hết suất không làm người khác bị chặn |
+| `test_healthz_and_metrics_are_never_limited` | Probe hệ thống không bị rate limit chặn nhầm |
 
 **CI (GitHub Actions)**: mỗi lần push, GitHub tự cài thư viện, chạy `ruff check` (lint) và
 `pytest`. Dấu tích xanh trên repo nghĩa là code trên nhánh main luôn chạy được.
@@ -554,7 +558,8 @@ Học thuộc bảng này là trả lời được phần lớn câu hỏi đị
 | **p95 latency** | **7,55 s** |
 | Chi phí | **$0,0035 cho 5 request** ≈ $0,0007/câu ≈ $0,70 cho 1000 câu |
 | Token (2 câu hỏi) | 5.633 vào / 261 ra, qua **6 lần gọi model** |
-| Test | **18**, offline, ~10 s |
+| Test | **23**, offline, ~20 s |
+| Giới hạn tần suất | 30 câu/IP/giờ (mặc định), trả `429` + `Retry-After` |
 | Docker image | 1,4 GB; build đầu 3 phút 50, rebuild ~15 giây |
 | Số dịch vụ trong compose | 4 (api, ui, prometheus, grafana) |
 
@@ -637,6 +642,25 @@ LLM tính tiền. Sửa: client gọi `es.close()` khi nhận sự kiện `done`
 Thư viện sách dùng bị Wikimedia chặn. Đổi sang `WebBaseLoader` (nền `requests`), tải được
 và còn trả về text đã bóc thẻ HTML sạch hơn.
 
+**Lỗi 6 — Container `ui` bị báo "unhealthy" dù chạy hoàn toàn bình thường**
+
+`docker compose ps` hiện `ui ... (unhealthy)`. Nguyên nhân: hai service `api` và `ui` dùng
+**chung một image**, nên `ui` thừa hưởng luôn `HEALTHCHECK` trong Dockerfile — mà cái đó
+gọi vào cổng **8000** của API, trong khi Streamlit chạy ở cổng **8501**.
+
+Sửa bằng cách ghi đè healthcheck cho riêng service `ui` trong compose, trỏ vào endpoint
+sẵn có của Streamlit:
+
+```yaml
+healthcheck:
+  test: ["CMD", "python", "-c",
+         "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health')"]
+```
+
+Bài học: **dùng chung image thì cũng dùng chung healthcheck** — service nào phục vụ cổng
+khác thì phải tự khai lại. Sai chỗ này không làm hỏng chức năng, nhưng hệ thống điều phối
+(Kubernetes, Cloud Run) sẽ liên tục khởi động lại một container đang khoẻ mạnh.
+
 ---
 
 ## 15. Giới hạn hiện tại
@@ -645,18 +669,18 @@ Nói ra được giới hạn là dấu hiệu của người hiểu hệ thốn
 
 | Giới hạn | Ảnh hưởng |
 |---|---|
-| **Chưa deploy công khai** | Chỉ chạy localhost, chưa có URL sống |
+| **Chưa deploy công khai** | Chỉ chạy localhost, chưa có URL sống. Đã chuẩn bị xong mọi thứ để deploy (mục 20) |
 | Kho kiến thức chỉ 4 trang về Cornwall | Hỏi vùng khác là không có dữ liệu |
 | Không nhớ hội thoại nhiều lượt | Hỏi "còn thị trấn kia thì sao?" là không hiểu |
 | Chỉ tìm theo vector, chưa hybrid | Tên riêng/số hiệu tìm kém hơn nếu có thêm BM25 |
 | Không chống prompt injection | Nội dung Wikivoyage là input không tin cậy |
-| Không giới hạn tốc độ (rate limit) | Deploy công khai sẽ bị đốt quota API |
+| Rate limit đếm trong bộ nhớ | Đúng với một instance; chạy nhiều bản sao phải chuyển sang Redis |
 | Eval chỉ 8 ca | Đủ để phát hiện hồi quy lớn, chưa đủ kết luận mạnh |
 | Bộ đếm metrics reset khi restart | Bình thường với Prometheus, nhưng cần biết |
 
 ---
 
-## 16. 20 câu phỏng vấn và cách trả lời
+## 16. 23 câu phỏng vấn và cách trả lời
 
 **Về agent**
 
@@ -706,7 +730,19 @@ Nói ra được giới hạn là dấu hiệu của người hiểu hệ thốn
 19. *Làm sao biết agent tốt?* → Hai chỉ số: tool-selection accuracy đọc từ state thật (100%)
     và LLM-as-judge (4.4/5). Kèm ví dụ ca 2/5 để cho thấy hai chỉ số bổ sung nhau.
 20. *Test hệ thống có LLM kiểu gì?* → Thay agent và API ngoài bằng đồ giả, test hợp đồng:
-    đúng thứ tự sự kiện, đúng schema, đúng mã lỗi. 18 test chạy offline trong 10 giây.
+    đúng thứ tự sự kiện, đúng schema, đúng mã lỗi. 23 test chạy offline trong 20 giây.
+
+**Về vận hành**
+
+21. *Mở demo công khai thì bảo vệ thế nào?* → Rate limit cửa sổ trượt theo IP, trả `429`
+    kèm `Retry-After`; `/healthz` và `/metrics` được miễn trừ. Đếm trong bộ nhớ là đủ cho
+    một instance, nhiều instance thì cần Redis.
+22. *Vì sao commit cả vector store 3,3 MB vào git?* → Để cold start phục vụ được ngay thay
+    vì tải lại 4 trang web và trả tiền embedding mỗi lần khởi động. Đánh đổi: file nhị phân
+    trong git; chấp nhận được vì nhỏ và ít thay đổi.
+23. *Deploy chỗ nào và vì sao?* → Hugging Face Spaces bản Docker: miễn phí, không cần thẻ
+    nên không thể phát sinh chi phí, và dùng lại đúng Dockerfile. Cloud Run chuyên nghiệp
+    hơn nhưng bắt buộc gắn thẻ.
 
 ---
 
@@ -760,3 +796,222 @@ Kết bằng một câu: *"Toàn bộ chạy bằng một lệnh `docker compose
 | **Eval** | Bộ đo chất lượng agent trên tập câu hỏi cố định |
 | **LLM-as-judge** | Dùng một LLM khác để chấm điểm câu trả lời |
 | **CI** | Máy chủ tự chạy lint + test mỗi lần push |
+| **Rate limit** | Giới hạn số request mỗi người trong một khoảng thời gian |
+| **Cold start** | Lần khởi động đầu tiên, khi chưa có gì được nạp sẵn |
+| **Frontmatter** | Khối YAML ở đầu file Markdown, dùng làm cấu hình |
+
+---
+
+## 19. Giới hạn tần suất — chuẩn bị cho việc mở công khai
+
+### Vấn đề
+
+Khi deploy công khai, **API key Gemini của bạn nằm sau một cái nút mà bất kỳ ai trên
+internet cũng bấm được**. Một người rảnh rỗi viết vòng lặp gọi 10.000 lần là hết sạch
+quota (hoặc hết tiền nếu bạn đã gắn thẻ). Đây là việc **bắt buộc làm trước khi deploy**,
+không phải tính năng "có thì tốt".
+
+### Thuật toán: cửa sổ trượt (sliding window)
+
+Ý tưởng đơn giản: với mỗi người gọi, ghi lại **thời điểm** của từng request. Khi có
+request mới, vứt bỏ những lượt đã quá 1 giờ, rồi đếm số lượt còn lại.
+
+```
+Giới hạn 3 câu/giờ. Trục thời gian:
+
+  09:00  09:10  09:30        10:05
+    │      │      │            │
+    ✓      ✓      ✓            ✓  ← lúc 10:05, lượt 09:00 đã rơi khỏi cửa sổ
+                               (còn 09:10, 09:30 → mới 2 lượt → cho qua)
+```
+
+Code trong `api.py`:
+
+```python
+RATE_LIMIT_PER_HOUR = int(os.environ.get("RATE_LIMIT_PER_HOUR", "30"))
+_RATE_WINDOW_SECONDS = 3600
+_hits: dict[str, deque[float]] = defaultdict(deque)
+
+def enforce_rate_limit(request: Request) -> None:
+    key = client_key(request)
+    now = time.time()
+    hits = _hits[key]
+
+    while hits and now - hits[0] > _RATE_WINDOW_SECONDS:   # bỏ lượt đã cũ
+        hits.popleft()
+
+    if len(hits) >= RATE_LIMIT_PER_HOUR:
+        metrics.RATE_LIMITED.inc()
+        retry_after = int(_RATE_WINDOW_SECONDS - (now - hits[0])) + 1
+        raise HTTPException(status_code=429, detail=..., 
+                            headers={"Retry-After": str(retry_after)})
+
+    hits.append(now)
+```
+
+`deque` (hàng đợi hai đầu) được chọn vì cần xoá ở **đầu** danh sách rất nhiều lần —
+`list.pop(0)` phải dịch cả mảng, `deque.popleft()` thì không.
+
+### "Dependency" của FastAPI — khái niệm cần hiểu
+
+```python
+@app.post("/chat", dependencies=[Depends(enforce_rate_limit)])
+def chat(request: ChatRequest) -> ChatResponse:
+    ...
+```
+
+`Depends(...)` bảo FastAPI: **chạy hàm này trước, nếu nó ném lỗi thì handler không chạy**.
+Nhờ vậy logic chặn nằm tách khỏi logic nghiệp vụ — thêm rate limit vào endpoint mới chỉ
+tốn một dòng, và bỏ đi cũng vậy. Đây là cách chuẩn để làm xác thực, phân quyền, chặn lạm
+dụng trong FastAPI.
+
+### Ba quyết định thiết kế đáng nói
+
+**1. Trả `429` kèm header `Retry-After`.** `429 Too Many Requests` là mã chuẩn cho tình
+huống này (không phải `403`). `Retry-After` cho client biết chờ bao nhiêu giây — thư viện
+HTTP tử tế sẽ tự đợi đúng khoảng đó thay vì đập liên tục.
+
+**2. `/healthz` và `/metrics` được miễn trừ.** Nếu chặn cả hai endpoint này, Docker và
+Prometheus gọi vào sẽ nhận `429`, hệ thống điều phối tưởng container chết và **khởi động
+lại một container đang khoẻ**. Có test riêng cho điều này.
+
+**3. Nhận dạng người gọi qua `X-Forwarded-For`.**
+
+```python
+forwarded = request.headers.get("x-forwarded-for", "")
+if forwarded:
+    return forwarded.split(",")[0].strip()
+return request.client.host if request.client else "unknown"
+```
+
+Khi chạy sau proxy (Hugging Face, Cloud Run, nginx), `request.client.host` là IP của
+**proxy** — tức mọi người dùng chung một suất, một người xài hết là cả thế giới bị chặn.
+Vì vậy phải đọc `X-Forwarded-For`.
+
+**Cảnh báo phải nói ra nếu bị hỏi:** header này do client tự đặt được, nên **không dùng để
+chống tấn công có chủ đích**. Nó chỉ chặn lạm dụng thông thường. Muốn chống thật thì phải
+xác thực bằng API key hoặc dùng rate limit ở tầng hạ tầng.
+
+### Giới hạn của cách làm hiện tại
+
+Bộ đếm nằm **trong bộ nhớ tiến trình**. Hệ quả: restart là mất bộ đếm, và nếu chạy nhiều
+bản sao thì mỗi bản đếm riêng (3 instance × 30 = thực tế 90 câu/giờ). Đúng với quy mô hiện
+tại; muốn chính xác khi scale thì chuyển bộ đếm sang Redis — logic không đổi, chỉ đổi chỗ
+lưu.
+
+### Bằng chứng chạy thật
+
+Đặt giới hạn 2 câu/giờ rồi bắn 3 câu vào container:
+
+```
+cau 1: HTTP 200
+cau 2: HTTP 200
+cau 3: HTTP 429     retry-after: 3592
+
+{"detail":"Demo limit reached: 2 questions per hour. Try again in 60 minute(s),
+           or run it locally - the repo is public."}
+```
+
+Thông báo lỗi cố ý **nói cho người dùng cách khác để dùng tiếp** (chạy local, repo công
+khai) thay vì chỉ đóng sập cửa. Chi tiết nhỏ nhưng là dấu hiệu của người nghĩ cho người dùng.
+
+---
+
+## 20. Đưa dữ liệu vào image và chuyện deploy
+
+### Vấn đề cold start
+
+Khi container khởi động lần đầu ở nơi chưa có sẵn vector store, nó phải: tải 4 trang
+Wikivoyage → cắt 92 chunk → gọi API embedding → ghi ra đĩa. Mất khoảng một phút và **tốn
+tiền embedding**. Nền tảng miễn phí thường cho container ngủ khi vắng khách rồi dựng lại
+khi có người vào — nghĩa là chuyện này lặp đi lặp lại.
+
+### Ba lựa chọn và vì sao chọn cách này
+
+| Cách | Ưu | Nhược |
+|---|---|---|
+| Dựng lúc khởi động (cũ) | Repo sạch | Chậm và tốn tiền ở **mỗi** cold start |
+| Dựng lúc **build image** | Cold start nhanh | Phải đưa API key vào lúc build — **sai nguyên tắc bảo mật** |
+| **Commit sẵn vào repo** ✅ | Cold start tức thì, không tốn tiền, không cần key lúc build | 3,3 MB nhị phân trong git |
+
+Chọn cách 3. Đánh đổi được chấp nhận vì dữ liệu **nhỏ và gần như không đổi**. Nếu kho
+kiến thức lên hàng trăm MB hoặc thay đổi hằng ngày thì phải đổi hướng: tải từ object
+storage (S3, MinIO) lúc khởi động.
+
+Việc cần làm chỉ là bỏ thư mục khỏi hai file loại trừ:
+
+```
+.gitignore     → bỏ dòng chroma_travel_info/   (để git theo dõi)
+.dockerignore  → bỏ dòng chroma_travel_info/   (để COPY . . đưa vào image)
+```
+
+Quên `.dockerignore` là dữ liệu vào git nhưng **không** vào image — đúng loại lỗi chỉ lộ
+ra khi deploy.
+
+### Một hành vi của Docker cần biết
+
+Trong `docker-compose.yml`, thư mục này bị gắn một **named volume** đè lên. Vậy dữ liệu
+nướng trong image có bị che mất không?
+
+Không — Docker có quy tắc: **volume có tên mà rỗng, khi gắn vào một thư mục đã có sẵn nội
+dung trong image, thì nội dung đó được chép vào volume**. Nên lần chạy đầu volume tự có
+đủ 92 chunk. (Quy tắc này **chỉ đúng với named volume**, không đúng với bind mount — bind
+mount che hẳn thư mục gốc.)
+
+### Bằng chứng chạy thật
+
+Chạy container **không gắn volume** — đúng như khi deploy lên Hugging Face:
+
+```
+Warming up the vector store ...
+Loading cached vector store ...     ← không tải web, không gọi API embedding
+Vector store ready.
+chunks = 92
+```
+
+Dòng `Loading cached` thay vì `Downloading destination pages` chính là bằng chứng.
+
+### Deploy: chọn nền tảng nào
+
+| Nền tảng | Cần thẻ? | Chạy Docker? | Ghi chú |
+|---|---|---|---|
+| **Hugging Face Spaces** ✅ | **Không** | Có | Không có thẻ thì **không thể** phát sinh tiền |
+| Google Cloud Run | Có | Có | Trông chuyên nghiệp hơn, free tier rộng, nhưng phải gắn thẻ |
+| Streamlit Community Cloud | Không | Không | Chỉ chạy được `app.py`, không chạy được API |
+| Vercel | — | Không hợp | Serverless, giới hạn ~250 MB và thời gian chạy ngắn — không hợp với agent 10 giây và thư viện nặng |
+
+Chọn Hugging Face vì yêu cầu là **không tốn đồng nào**, và nó dùng lại đúng `Dockerfile`
+đã có. Image đã sẵn sàng: chạy non-root **uid 1000** — đúng thứ Spaces yêu cầu.
+
+### Một vấn đề nhỏ nhưng phải xử lý gọn
+
+Hugging Face đọc cấu hình Space từ khối YAML ở đầu `README.md`:
+
+```yaml
+---
+sdk: docker
+app_port: 8000
+---
+```
+
+Nhưng để khối đó trong README trên GitHub thì GitHub render nó thành **một cái bảng xấu
+ngay đầu trang portfolio**. Giải pháp: giữ `main` sạch, chỉ chèn YAML ở một nhánh riêng
+dành cho deploy:
+
+```bash
+git checkout -B hf-space main      # tạo lại nhánh deploy từ main
+python deploy/make_hf_readme.py    # chèn YAML vào README
+git commit -am "chore: Hugging Face Space metadata"
+git push -f hf hf-space:main       # đẩy sang Space
+git checkout main                  # quay về nhánh sạch
+```
+
+Vì nhánh `hf-space` được **tạo lại từ đầu** mỗi lần (`checkout -B`) nên không bao giờ có
+xung đột khi merge. Script `deploy/make_hf_readme.py` cũng được viết để chạy nhiều lần
+không nhân đôi khối YAML.
+
+### Trạng thái hiện tại
+
+Mọi thứ đã sẵn sàng, **chưa bấm deploy** vì bước đó cần tài khoản Hugging Face của bạn.
+Quy trình 7 bước đầy đủ nằm ở [DEPLOY_HF.md](DEPLOY_HF.md). Sau khi có URL, cần thêm hai
+chỗ: dòng live demo trong README và một bullet trong CV.

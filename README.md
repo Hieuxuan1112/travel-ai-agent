@@ -34,6 +34,7 @@ Assistant: Two beach towns with clear skies right now are St Ives (12.9 °C) and
 | 🌐 **HTTP API with SSE streaming** | FastAPI service exposing the agent: `POST /chat` for plain JSON, `GET /chat/stream` pushing `tool_call` / `tool_result` / `answer` events over Server-Sent Events as they happen, `/healthz` for probes, and auto-generated OpenAPI docs at `/docs` |
 | 📈 **LLM-specific observability** | Prometheus metrics for request latency (p95), per-tool call counts / duration / error rate, token usage and **cost in USD** — scraped into Prometheus and rendered by a provisioned Grafana dashboard, all wired up in Compose |
 | 🖥️ **Streaming web UI** | Streamlit chat that shows every reasoning step, tool call and tool result live, plus latency and tool-call counters |
+| 🛡️ **Safe to expose publicly** | Per-IP sliding-window rate limiting returns `429` with `Retry-After` before a stranger can drain the API quota; health and metrics endpoints stay exempt so container probes never trip it |
 | 📊 **Evaluated, not just demoed** | 8-case suite measuring tool-selection accuracy and answer quality (LLM-as-judge) → [`evals/results.md`](evals/results.md) |
 | ✅ **Tested & linted in CI** | Unit tests run with no network and no API key (services are faked), ruff-clean, GitHub Actions on every push |
 
@@ -144,8 +145,14 @@ The dashboard tracks what actually matters for an LLM system — p95 latency, to
 rate and per-tool p95, tool error count, token throughput, and cumulative spend. Measured
 on a real run: **p95 7.55 s**, **$0.0035 across 5 requests** (~$0.0007 per question).
 
-First launch downloads four Wikivoyage pages and embeds them (~1 min); afterwards the
-vector store is loaded from `chroma_travel_info/`.
+The prebuilt vector store ships in the repo (3.3 MB), so there is nothing to download or
+embed on first run — delete `chroma_travel_info/` if you want it rebuilt from Wikivoyage.
+
+### Deploy
+
+`docs/DEPLOY_HF.md` walks through publishing this as a free public Space on Hugging Face
+(no credit card): the image already runs non-root on the uid Spaces expects, carries the
+vector store so cold starts serve immediately, and rate-limits callers per IP.
 
 ### Use the tools from Claude Desktop
 
@@ -222,6 +229,8 @@ docs/MENTOR.md            Vietnamese full guide: architecture, flow, trade-offs,
 docs/HOC_FASTAPI_SSE.md   Vietnamese deep-dive on the API and SSE layer
 docs/HOC_DOCKER.md        Vietnamese deep-dive on the Docker/compose setup
 docs/HOC_PROMETHEUS.md    Vietnamese deep-dive on metrics, PromQL and Grafana
+docs/DEPLOY_HF.md         step-by-step deploy to Hugging Face Spaces (free, no card)
+deploy/                   Space metadata generator
 Dockerfile                multi-stage, non-root, healthcheck, $PORT-aware
 docker-compose.yml        api + ui sharing one image and one vector-store volume
 ```
