@@ -43,6 +43,11 @@ IN_FLIGHT = Gauge(
     "So request dang chay ngay luc nay",
 )
 
+RATE_LIMITED = Counter(
+    "agent_rate_limited_total",
+    "So request bi tu choi vi vuot gioi han tan suat",
+)
+
 TOOL_CALLS = Counter(
     "agent_tool_calls_total",
     "So lan tung tool duoc goi",

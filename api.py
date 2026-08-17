@@ -14,11 +14,13 @@ Giai thich chi tiet tung khai niem: docs/HOC_FASTAPI_SSE.md
 """
 
 import json
+import os
 import time
+from collections import defaultdict, deque
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
@@ -58,6 +60,61 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+
+# ===========================================================================
+# 1b. GIOI HAN TAN SUAT (rate limit)
+#
+# Demo cong khai = key Gemini cua minh nam sau mot cai nut ai tren internet cung
+# bam duoc. Khong chan thi mot nguoi rung cho lap la het quota (hoac het tien).
+#
+# Dung cua so truot trong BO NHO: don gian, du cho mot instance. Chay nhieu
+# instance thi phai chuyen sang Redis vi moi tien trinh dem rieng.
+# ===========================================================================
+
+RATE_LIMIT_PER_HOUR = int(os.environ.get("RATE_LIMIT_PER_HOUR", "30"))
+_RATE_WINDOW_SECONDS = 3600
+_hits: dict[str, deque[float]] = defaultdict(deque)
+
+
+def client_key(request: Request) -> str:
+    """Nhan dang nguoi goi.
+
+    Sau proxy (Hugging Face, Cloud Run, nginx) thi request.client.host la IP cua
+    proxy - moi nguoi dung se chung mot suat. Vi vay uu tien X-Forwarded-For.
+    Luu y: header nay client tu dat duoc nen KHONG dung de chong tan cong that;
+    o day chi de chan lam dung thong thuong.
+    """
+    forwarded = request.headers.get("x-forwarded-for", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def enforce_rate_limit(request: Request) -> None:
+    """Dependency cua FastAPI: chay TRUOC handler, vuot nguong thi nem 429."""
+    key = client_key(request)
+    now = time.time()
+    hits = _hits[key]
+
+    # Bo cac luot da roi ra ngoai cua so 1 gio
+    while hits and now - hits[0] > _RATE_WINDOW_SECONDS:
+        hits.popleft()
+
+    if len(hits) >= RATE_LIMIT_PER_HOUR:
+        metrics.RATE_LIMITED.inc()
+        retry_after = int(_RATE_WINDOW_SECONDS - (now - hits[0])) + 1
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"Demo limit reached: {RATE_LIMIT_PER_HOUR} questions per hour. "
+                f"Try again in {retry_after // 60 + 1} minute(s), or run it locally - "
+                "the repo is public."
+            ),
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    hits.append(now)
 
 
 # ===========================================================================
@@ -108,7 +165,12 @@ def prometheus_metrics() -> PlainTextResponse:
     )
 
 
-@app.post("/chat", response_model=ChatResponse, tags=["agent"])
+@app.post(
+    "/chat",
+    response_model=ChatResponse,
+    tags=["agent"],
+    dependencies=[Depends(enforce_rate_limit)],
+)
 def chat(request: ChatRequest) -> ChatResponse:
     """Hoi mot cau, doi agent lam xong, tra ve mot cuc JSON.
 
@@ -205,7 +267,7 @@ def agent_events(question: str) -> Iterator[str]:
     })
 
 
-@app.get("/chat/stream", tags=["agent"])
+@app.get("/chat/stream", tags=["agent"], dependencies=[Depends(enforce_rate_limit)])
 def chat_stream(q: str = Query(min_length=3, max_length=500, description="Cau hoi")):
     """Hoi mot cau, nhan tung su kien ngay khi agent lam - khong phai cho het 15 giay.
 
