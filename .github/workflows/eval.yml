@@ -1,0 +1,56 @@
+# Cong chan chat luong agent.
+# Tach rieng khoi ci.yml vi workflow nay GOI LLM THAT: can secret va ton tien
+# (khoang $0.006 mot lan chay), trong khi unit test thi luon chay duoc mien phi.
+
+name: Eval gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    # PR tu fork khong duoc cap secret -> bo qua, khong de CI do oan vi mot ly do
+    # khong lien quan gi den chat luong agent.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+      MIN_TOOL_ACCURACY: "0.85"
+      MIN_JUDGE_SCORE: "3.5"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Check that the API key secret exists
+        id: check
+        run: |
+          if [ -z "$GOOGLE_API_KEY" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "Secret GOOGLE_API_KEY chua duoc dat - bo qua cong chan." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run the eval gate
+        if: steps.check.outputs.run == 'true'
+        run: python evals/eval_agent.py --gate
+
+      - name: Upload results.md
+        if: steps.check.outputs.run == 'true' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: evals/results.md

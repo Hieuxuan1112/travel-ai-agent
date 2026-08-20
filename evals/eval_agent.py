@@ -5,10 +5,15 @@ Hai chi so:
      doc tu lich su message chu khong doan).
   2. Answer quality (LLM-as-judge) - mot LLM khac cham cau tra loi tu 1 den 5.
 
-Chay:  venv\\Scripts\\python.exe evals\\eval_agent.py
+Chay tay:  venv\\Scripts\\python.exe evals\\eval_agent.py
+Lam CONG CHAN: them --gate -> tra exit code 1 khi chat luong tut duoi nguong,
+               nho vay CI chan duoc thay doi lam agent te di.
+
 Ket qua ghi ra evals/results.md
 """
 
+import argparse
+import os
 import re
 import sys
 import time
@@ -34,6 +39,11 @@ DATASET = [
      {"search_travel_info", "weather_forecast"}),
 ]
 
+# Nguong chan hoi quy. Dat THAP HON ket qua hien tai (100% / 4.4) mot khoang de
+# dao dong tu nhien cua LLM khong lam CI do oan, nhung van bat duoc tut that su.
+MIN_TOOL_ACCURACY = float(os.environ.get("MIN_TOOL_ACCURACY", "0.85"))
+MIN_JUDGE_SCORE = float(os.environ.get("MIN_JUDGE_SCORE", "3.5"))
+
 JUDGE_PROMPT = """You are grading a travel assistant's answer.
 
 Question: {question}
@@ -50,6 +60,27 @@ def called_tools(messages) -> list[str]:
         if isinstance(message, AIMessage):
             names.extend(call["name"] for call in message.tool_calls or [])
     return names
+
+
+def decide_gate(
+    accuracy: float,
+    avg_score: float,
+    min_accuracy: float = MIN_TOOL_ACCURACY,
+    min_score: float = MIN_JUDGE_SCORE,
+) -> list[str]:
+    """Tra ve danh sach LY DO TRUOT. Danh sach rong nghia la dat.
+
+    Tach thanh ham thuan tuy (khong goi LLM, khong doc file) de test offline duoc
+    - ban than cai cong chan cung phai co test, khong thi no hong ma khong ai biet.
+    """
+    failures = []
+    if accuracy < min_accuracy:
+        failures.append(
+            f"tool-selection accuracy {accuracy:.0%} < nguong {min_accuracy:.0%}"
+        )
+    if avg_score < min_score:
+        failures.append(f"answer quality {avg_score:.2f}/5 < nguong {min_score:.2f}/5")
+    return failures
 
 
 def with_retry(fn, attempts: int = 3):
@@ -70,11 +101,11 @@ def judge(question: str, answer: str) -> int:
     return int(match.group()) if match else 0
 
 
-def main() -> None:
+def main(limit: int | None = None, gate: bool = False) -> int:
     lab.get_travel_info_vectorstore()
     rows = []
 
-    for question, expected in DATASET:
+    for question, expected in DATASET[:limit]:
         started = time.time()
         result = with_retry(
             lambda q=question: lab.travel_info_agent.invoke(
@@ -120,6 +151,33 @@ def main() -> None:
     out.write_text("\n".join(report) + "\n", encoding="utf-8")
     print(f"\nTool-selection accuracy {accuracy:.0%} | judge {avg_score:.1f}/5 -> {out}")
 
+    # Tren GitHub Actions: day nguyen bang ket qua vao trang tom tat cua job,
+    # de xem duoc ngay tren giao dien khong phai tai artifact ve.
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary_path:
+        with open(summary_path, "a", encoding="utf-8") as fh:
+            fh.write("\n".join(report) + "\n")
+
+    failures = decide_gate(accuracy, avg_score)
+    if not gate:
+        return 0
+    if failures:
+        print("\nGATE FAILED:")
+        for reason in failures:
+            print(f"  - {reason}")
+        return 1
+    print(
+        f"\nGATE PASSED (nguong: accuracy >= {MIN_TOOL_ACCURACY:.0%}, "
+        f"quality >= {MIN_JUDGE_SCORE:.1f})"
+    )
+    return 0
+
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Cham diem agent tren bo cau hoi chuan.")
+    parser.add_argument("--limit", type=int, default=None,
+                        help="chi chay N cau dau (chay thu cho nhanh va re)")
+    parser.add_argument("--gate", action="store_true",
+                        help="tra exit code 1 khi chat luong tut duoi nguong")
+    args = parser.parse_args()
+    sys.exit(main(limit=args.limit, gate=args.gate))
