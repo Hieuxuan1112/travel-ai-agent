@@ -1,7 +1,7 @@
 # Học Prometheus + Grafana qua chính project này
 
-File liên quan: [`metrics.py`](../metrics.py), [`api.py`](../api.py),
-[`monitoring/`](../monitoring), [`docker-compose.yml`](../docker-compose.yml).
+File liên quan: [`metrics.py`](../../metrics.py), [`api.py`](../../api.py),
+[`monitoring/`](../../monitoring), [`docker-compose.yml`](../../docker-compose.yml).
 
 ---
 

@@ -246,10 +246,9 @@ tests/             unit tests (offline)
 docs/graph.png     agent graph rendered by LangGraph
 HUONG_DAN.md       Vietnamese walkthrough of the architecture
 docs/MENTOR.md            Vietnamese full guide: architecture, flow, trade-offs, interview Q&A
-docs/LO_TRINH_HOC.md      Vietnamese study plan: the theory behind every number in the repo
-docs/HOC_FASTAPI_SSE.md   Vietnamese deep-dive on the API and SSE layer
-docs/HOC_DOCKER.md        Vietnamese deep-dive on the Docker/compose setup
-docs/HOC_PROMETHEUS.md    Vietnamese deep-dive on metrics, PromQL and Grafana
+docs/hoc/                 Vietnamese study material: a prioritised plan plus one deep-dive
+                          per topic (FastAPI/SSE, Docker, Prometheus, vector DB, prompt
+                          engineering) and two runnable demos
 docs/DEPLOY.md            the live deployment, and the platform trade-offs behind it
 Dockerfile                multi-stage, non-root, healthcheck, $PORT-aware
 docker-compose.yml        api + ui sharing one image and one vector-store volume

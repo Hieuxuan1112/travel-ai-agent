@@ -453,9 +453,9 @@ Ba phần này mỗi phần có một tài liệu riêng, đây chỉ là bản 
 
 | Phần | Làm gì | Tài liệu chi tiết |
 |---|---|---|
-| **FastAPI + SSE** | Biến agent thành dịch vụ ai gọi cũng được; SSE đẩy từng bước về client ngay khi xảy ra thay vì bắt chờ 8 giây | [HOC_FASTAPI_SSE.md](HOC_FASTAPI_SSE.md) |
-| **Docker + Compose** | Đóng gói để chạy giống nhau ở mọi máy; multi-stage, non-root, healthcheck; compose chạy 4 dịch vụ bằng 1 lệnh | [HOC_DOCKER.md](HOC_DOCKER.md) |
-| **Prometheus + Grafana** | Đo p95 latency, số lần gọi từng tool, tool lỗi, token và **chi phí USD** | [HOC_PROMETHEUS.md](HOC_PROMETHEUS.md) |
+| **FastAPI + SSE** | Biến agent thành dịch vụ ai gọi cũng được; SSE đẩy từng bước về client ngay khi xảy ra thay vì bắt chờ 8 giây | [HOC_FASTAPI_SSE.md](hoc/HOC_FASTAPI_SSE.md) |
+| **Docker + Compose** | Đóng gói để chạy giống nhau ở mọi máy; multi-stage, non-root, healthcheck; compose chạy 4 dịch vụ bằng 1 lệnh | [HOC_DOCKER.md](hoc/HOC_DOCKER.md) |
+| **Prometheus + Grafana** | Đo p95 latency, số lần gọi từng tool, tool lỗi, token và **chi phí USD** | [HOC_PROMETHEUS.md](hoc/HOC_PROMETHEUS.md) |
 
 Ba con số đáng nhớ từ ba phần này: SSE làm sự kiện đầu tiên về trong **~1 giây** thay vì
 8 giây; image Docker **1,4 GB**, rebuild sau sửa code **~15 giây**; **p95 = 7,55 giây**.

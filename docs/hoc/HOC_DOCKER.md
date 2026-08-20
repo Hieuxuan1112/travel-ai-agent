@@ -1,7 +1,7 @@
 # Học Docker qua chính project này
 
-Ba file: [`Dockerfile`](../Dockerfile), [`.dockerignore`](../.dockerignore),
-[`docker-compose.yml`](../docker-compose.yml).
+Ba file: [`Dockerfile`](../../Dockerfile), [`.dockerignore`](../../.dockerignore),
+[`docker-compose.yml`](../../docker-compose.yml).
 
 ---
 

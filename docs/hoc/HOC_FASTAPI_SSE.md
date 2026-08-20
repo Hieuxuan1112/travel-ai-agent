@@ -2,7 +2,7 @@
 
 Tài liệu này dạy hai thứ: **FastAPI** (biến code Python thành dịch vụ web) và
 **SSE** (đẩy dữ liệu về cho người dùng ngay khi có, không bắt họ chờ). Code thật
-nằm ở [`api.py`](../api.py), test ở [`tests/test_api.py`](../tests/test_api.py).
+nằm ở [`api.py`](../../api.py), test ở [`tests/test_api.py`](../../tests/test_api.py).
 
 ---
 
