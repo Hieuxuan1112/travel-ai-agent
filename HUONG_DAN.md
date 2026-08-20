@@ -318,7 +318,7 @@ vài nghìn token. Embedding chỉ chạy một lần rồi cache xuống đĩa.
 | `metrics.py` + `monitoring/` | **Prometheus + Grafana**: đo p95 latency, tool nào gọi bao nhiêu lần / lỗi bao nhiêu, token và **chi phí USD**. Học chi tiết ở [docs/HOC_PROMETHEUS.md](docs/HOC_PROMETHEUS.md) | dashboard tại http://localhost:3000/d/travel-agent |
 | `make_graph_image.py` | Xuất sơ đồ đồ thị agent ra `docs/graph.png` | `venv\Scripts\python.exe make_graph_image.py` |
 
-**Kết quả eval đã đo được:** chọn đúng tool **8/8 (100%)**, LLM chấm chất lượng **4.4/5**,
+**Kết quả eval đã đo được:** chọn đúng tool **8/8 (100%)**, LLM chấm chất lượng **4.1/5**,
 trung bình 10.4 giây/câu. Số liệu chi tiết trong `evals/results.md`.
 
 ### Nếu thầy hỏi về phần MCP

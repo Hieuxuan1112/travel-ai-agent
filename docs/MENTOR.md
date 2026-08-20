@@ -137,7 +137,7 @@ khi phỏng vấn về kiến trúc.
 | `app.py` | Giao diện web Streamlit |
 | `metrics.py` | Định nghĩa các chỉ số Prometheus |
 | `evals/eval_agent.py` | Chấm điểm agent trên bộ 8 câu hỏi |
-| `tests/` | 18 test chạy offline |
+| `tests/` | 29 test chạy offline |
 | `monitoring/` | Cấu hình Prometheus + dashboard Grafana |
 | `Dockerfile`, `docker-compose.yml` | Đóng gói và chạy cả hệ thống |
 
@@ -493,7 +493,7 @@ tiêu chí "hữu ích, cụ thể, có bám dữ liệu thật".
 | Chỉ số | Kết quả |
 |---|---|
 | Tool-selection accuracy | **100%** (8/8) |
-| Answer quality (1–5) | **4.4** |
+| Answer quality (1–5) | **4.1** |
 | Latency trung bình | 10,4 s |
 
 **Và một điểm yếu thật, phải nói ra nếu được hỏi:** câu *"I want a surfing town in Cornwall
@@ -504,11 +504,41 @@ phải đo hai chỉ số chứ không phải một.
 
 Biết và nói ra điểm yếu này trong phỏng vấn tạo ấn tượng tốt hơn hẳn việc chỉ khoe 100%.
 
+### Cổng chặn hồi quy trong CI
+
+Đo được rồi thì phải **chặn** được. Thêm `--gate` là script trả exit code 1 khi chất lượng
+tụt dưới ngưỡng, và workflow `Eval gate` dùng đúng cơ chế đó để bắt CI đỏ:
+
+```python
+def decide_gate(accuracy, avg_score, min_accuracy=MIN_TOOL_ACCURACY,
+                min_score=MIN_JUDGE_SCORE) -> list[str]:
+    failures = []
+    if accuracy < min_accuracy:
+        failures.append(f"tool-selection accuracy {accuracy:.0%} < nguong {min_accuracy:.0%}")
+    if avg_score < min_score:
+        failures.append(f"answer quality {avg_score:.2f}/5 < nguong {min_score:.2f}/5")
+    return failures
+```
+
+Ba quyết định thiết kế đáng nói:
+
+**1. Dùng ngưỡng, không so bằng.** LLM-as-judge có tính ngẫu nhiên — cùng bộ 8 câu, lần
+chấm 4.4, lần chấm 4.1. Cổng đòi đúng một con số sẽ đỏ vô cớ; ngưỡng 85% và 3.5/5 có
+khoảng đệm nên chỉ đỏ khi tụt thật.
+
+**2. Tách thành hàm thuần tuý để test được.** `decide_gate` không gọi LLM, không đọc file,
+nên có 6 unit test chạy offline. Lý do: **một cái cổng hỏng theo kiểu "luôn cho qua" còn
+tệ hơn không có cổng** — CI vẫn xanh trong khi agent đã hỏng.
+
+**3. Tách workflow riêng khỏi `ci.yml`.** Unit test luôn chạy được, miễn phí, không cần
+key. Eval thì gọi LLM thật: cần secret và tốn khoảng $0,006 mỗi lần. Gộp chung sẽ khiến
+PR từ fork đỏ vì thiếu secret — nên workflow eval tự bỏ qua trong trường hợp đó.
+
 ---
 
 ## 11. Test và CI
 
-**23 test, chạy hoàn toàn offline** — không gọi mạng, không cần API key, xong trong ~20 giây.
+**29 test, chạy hoàn toàn offline** — không gọi mạng, không cần API key, xong trong ~20 giây.
 
 Cách làm: thay thế thứ ở ngoài bằng đồ giả.
 
@@ -553,12 +583,12 @@ Học thuộc bảng này là trả lời được phần lớn câu hỏi đị
 | Cắt chunk | 1024 ký tự, chồng lấn 128 |
 | Model | `gemini-3.1-flash-lite` + `gemini-embedding-001` |
 | Tool-selection accuracy | **100%** (8/8 ca) |
-| Answer quality (LLM-judge) | **4.4/5** |
+| Answer quality (LLM-judge) | **4.1/5** |
 | Latency trung bình | 10,4 s |
 | **p95 latency** | **7,55 s** |
 | Chi phí | **$0,0035 cho 5 request** ≈ $0,0007/câu ≈ $0,70 cho 1000 câu |
 | Token (2 câu hỏi) | 5.633 vào / 261 ra, qua **6 lần gọi model** |
-| Test | **23**, offline, ~20 s |
+| Test | **29**, offline, ~20 s |
 | Giới hạn tần suất | 30 câu/IP/giờ (mặc định), trả `429` + `Retry-After` |
 | Docker image | 1,4 GB; build đầu 3 phút 50, rebuild ~15 giây |
 | Số dịch vụ trong compose | 4 (api, ui, prometheus, grafana) |
@@ -729,9 +759,9 @@ Nói ra được giới hạn là dấu hiệu của người hiểu hệ thốn
 **Về chất lượng**
 
 19. *Làm sao biết agent tốt?* → Hai chỉ số: tool-selection accuracy đọc từ state thật (100%)
-    và LLM-as-judge (4.4/5). Kèm ví dụ ca 2/5 để cho thấy hai chỉ số bổ sung nhau.
+    và LLM-as-judge (4.1/5). Kèm ví dụ ca 2/5 để cho thấy hai chỉ số bổ sung nhau.
 20. *Test hệ thống có LLM kiểu gì?* → Thay agent và API ngoài bằng đồ giả, test hợp đồng:
-    đúng thứ tự sự kiện, đúng schema, đúng mã lỗi. 23 test chạy offline trong 20 giây.
+    đúng thứ tự sự kiện, đúng schema, đúng mã lỗi. 29 test chạy offline trong 20 giây.
 
 **Về vận hành**
 
@@ -764,10 +794,10 @@ docker compose up -d
 3. **(60 giây) Mở `/docs`** — API có schema, validation, tài liệu tự sinh.
 4. **(60 giây) Mở Grafana** http://localhost:3000/d/travel-agent — "p95 7,55 giây, và tôi
    đo được cả chi phí: $0,0007 mỗi câu hỏi."
-5. **(60 giây) Mở `evals/results.md`** — "100% chọn đúng công cụ, 4.4/5 chất lượng. Có một
+5. **(60 giây) Mở `evals/results.md`** — "100% chọn đúng công cụ, 4.1/5 chất lượng. Có một
    ca 2/5, đây là hạn chế tôi đã biết và đang xử lý."
 
-Kết bằng một câu: *"Toàn bộ chạy bằng một lệnh `docker compose up`, có 18 test và CI."*
+Kết bằng một câu: *"Toàn bộ chạy bằng một lệnh `docker compose up`, có 29 test và CI."*
 
 ---
 

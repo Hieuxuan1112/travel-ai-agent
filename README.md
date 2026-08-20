@@ -40,6 +40,7 @@ Assistant: Two beach towns with clear skies right now are St Ives (12.9 °C) and
 | 🖥️ **Streaming web UI** | Streamlit chat that shows every reasoning step, tool call and tool result live, plus latency and tool-call counters |
 | 🛡️ **Safe to expose publicly** | Per-IP sliding-window rate limiting returns `429` with `Retry-After` before a stranger can drain the API quota; health and metrics endpoints stay exempt so container probes never trip it |
 | 📊 **Evaluated, not just demoed** | 8-case suite measuring tool-selection accuracy and answer quality (LLM-as-judge) → [`evals/results.md`](evals/results.md) |
+| 🚦 **Quality is a CI gate, not a vibe** | A separate workflow replays the suite against the real model on every push and **fails the build** if tool-selection accuracy or judge score drops below threshold — thresholds rather than exact matches, because LLM-as-judge is stochastic |
 | ✅ **Tested & linted in CI** | Unit tests run with no network and no API key (services are faked), ruff-clean, GitHub Actions on every push |
 
 ## Architecture
@@ -200,10 +201,23 @@ to see which tools the agent actually called, and has a second LLM grade each an
 | Metric | Result |
 | --- | --- |
 | Tool-selection accuracy | **100%** (8/8) |
-| Answer quality (LLM-as-judge, 1–5) | **4.4** |
+| Answer quality (LLM-as-judge, 1–5) | **4.1** |
 | Average latency | 10.4 s |
 
 Full per-question breakdown: [`evals/results.md`](evals/results.md).
+
+Adding `--gate` turns the same script into a regression gate that exits non-zero when
+quality drops, which is how the `Eval gate` workflow blocks a bad change:
+
+```bash
+python evals/eval_agent.py --gate      # MIN_TOOL_ACCURACY=0.85  MIN_JUDGE_SCORE=3.5
+```
+
+The thresholds sit below the current measurements on purpose: LLM-as-judge is stochastic,
+so the same suite scores 4.1–4.4 across runs. A gate that demanded an exact number would
+fail for no reason; one with headroom still catches a real regression. The threshold logic
+is a pure function with its own offline tests, because a gate that silently always passes
+is worse than no gate.
 
 ## Tests
 
@@ -232,6 +246,7 @@ tests/             unit tests (offline)
 docs/graph.png     agent graph rendered by LangGraph
 HUONG_DAN.md       Vietnamese walkthrough of the architecture
 docs/MENTOR.md            Vietnamese full guide: architecture, flow, trade-offs, interview Q&A
+docs/LO_TRINH_HOC.md      Vietnamese study plan: the theory behind every number in the repo
 docs/HOC_FASTAPI_SSE.md   Vietnamese deep-dive on the API and SSE layer
 docs/HOC_DOCKER.md        Vietnamese deep-dive on the Docker/compose setup
 docs/HOC_PROMETHEUS.md    Vietnamese deep-dive on metrics, PromQL and Grafana
