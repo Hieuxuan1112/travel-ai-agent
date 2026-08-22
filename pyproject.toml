@@ -7,3 +7,9 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff.lint.per-file-ignores]
+# Script day la lenh print bang ASCII rong: ep xuong 100 cot se lam vo bang
+# va kho doc hon. Day la ngoai le CO Y THUC cho rieng script day, khong phai
+# tat lint toan repo.
+"docs/hoc/demo_*.py" = ["E501"]

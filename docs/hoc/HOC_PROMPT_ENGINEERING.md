@@ -150,7 +150,7 @@ in the middle"). Nên: chỉ dẫn quan trọng đặt đầu, và nhắc lại 
 tham số. Chạy để tự thấy:
 
 ```bash
-python docs\demo_prompt_ab.py --schema
+python docs\hoc\demo_prompt_ab.py --schema
 ```
 
 Kết quả thật từ repo của bạn:
@@ -185,7 +185,7 @@ của Falmouth (Massachusetts).
 Phần đáng giá nhất tài liệu này. Chạy:
 
 ```bash
-python docs\demo_prompt_ab.py
+python docs\hoc\demo_prompt_ab.py
 ```
 
 Nó hỏi cùng một câu hai lần — có và không có system prompt — rồi in ra model quyết định
@@ -235,7 +235,7 @@ không kết luận được vì LLM vốn dao động.
 ### Thí nghiệm thứ ba cũng cho kết quả bất ngờ
 
 ```bash
-python docs\demo_prompt_ab.py --vague
+python docs\hoc\demo_prompt_ab.py --vague
 ```
 
 Thí nghiệm này đổi mô tả tool thành mơ hồ (`"Search stuff."`, `"Get data."`) để xem model

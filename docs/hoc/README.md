@@ -12,14 +12,16 @@ Tài liệu để **học kiến thức nền**, tách khỏi tài liệu mô t�
 | 0 | [LO_TRINH_HOC.md](LO_TRINH_HOC.md) | **Đọc đầu tiên.** Bản đồ CV → kiến thức, 6 mức ưu tiên P1–P6, lịch 6 tuần, kịch bản nói về từng dòng CV | ⭐ bắt buộc |
 | 1 | [HOC_VECTOR_DB.md](HOC_VECTOR_DB.md) | Embedding, cosine, HNSW, chunking, metadata filter, điểm mù của vector search | P3 |
 | 2 | [HOC_PROMPT_ENGINEERING.md](HOC_PROMPT_ENGINEERING.md) | Message, few-shot, mô tả tool, structured output, LLM-as-judge, prompt injection | P2 |
-| 3 | [HOC_FASTAPI_SSE.md](HOC_FASTAPI_SSE.md) | HTTP căn bản, FastAPI, pydantic, Server-Sent Events | đã làm |
-| 4 | [HOC_DOCKER.md](HOC_DOCKER.md) | Image/container, multi-stage, non-root, healthcheck, compose, volume | đã làm |
-| 5 | [HOC_PROMETHEUS.md](HOC_PROMETHEUS.md) | Counter/Gauge/Histogram, p95, PromQL, Grafana provisioning | đã làm |
+| 3 | [HOC_SQL.md](HOC_SQL.md) | JOIN, GROUP BY, subquery, CTE, window function, index, NULL, transaction | ⭐ hay bị hỏi |
+| 4 | [HOC_TOAN_AI.md](HOC_TOAN_AI.md) | Vector, cosine, ma trận, softmax, xác suất, gradient descent, p95 | ⭐ nền của P1–P2 |
+| 5 | [HOC_FASTAPI_SSE.md](HOC_FASTAPI_SSE.md) | HTTP căn bản, FastAPI, pydantic, Server-Sent Events | đã làm |
+| 6 | [HOC_DOCKER.md](HOC_DOCKER.md) | Image/container, multi-stage, non-root, healthcheck, compose, volume | đã làm |
+| 7 | [HOC_PROMETHEUS.md](HOC_PROMETHEUS.md) | Counter/Gauge/Histogram, p95, PromQL, Grafana provisioning | đã làm |
 
 Mỗi file đều có phần **tự kiểm tra** với đáp án giấu trong `<details>` — trả lời trước rồi
 mới mở xem.
 
-## Hai chương trình chạy được
+## Bốn chương trình chạy được
 
 Đọc mười trang không bằng gõ thử một câu.
 
@@ -38,7 +40,18 @@ Ba thí nghiệm về prompt: có/không system prompt, tờ khai tool mà LLM t
 mô tả tool rõ ràng vs mơ hồ. Kết quả đo được **trái với kỳ vọng của sách** — phần phân tích
 nằm ở mục 5 của `HOC_PROMPT_ENGINEERING.md`.
 
-## Còn thiếu
+```bash
+venv\Scripts\python.exe docs\hoc\demo_sql.py
+```
 
-Hai chủ đề đã lên kế hoạch nhưng chưa soạn: **SQL** và **toán tối thiểu cho AI**. Khi soạn
-xong thì đặt vào đây với tên `HOC_SQL.md` và `HOC_TOAN_AI.md`.
+Cơ sở dữ liệu SQLite trong bộ nhớ với bảng nhân viên/phòng ban/doanh số dựng sẵn. Gõ câu
+SQL bất kỳ và xem kết quả ngay. `--demo` chạy lại toàn bộ ví dụ trong bài, `--baitap` xem
+lời giải 10 bài tập, `--index` đo thời gian truy vấn trên 200 nghìn dòng trước và sau khi
+tạo index.
+
+```bash
+venv\Scripts\python.exe docs\hoc\demo_toan_ai.py
+```
+
+Minh hoạ bằng số nhỏ tính tay được: cosine giữa các vector 3 chiều, softmax đổi ra sao khi
+đổi temperature, gradient descent hội tụ từng bước, và vì sao p95 khác trung bình.

@@ -190,7 +190,7 @@ Nhìn kết quả demo thật, cột "khoảng cách" — số nhỏ nhất đ�
 Đọc mười trang không bằng gõ thử một câu. Chạy:
 
 ```bash
-D:\langgraph-agent-lab\venv\Scripts\python.exe D:\langgraph-agent-lab\docs\demo_vector_search.py
+D:\langgraph-agent-lab\venv\Scripts\python.exe D:\langgraph-agent-lab\docs\hoc\demo_vector_search.py
 ```
 
 Gõ câu hỏi bất kỳ, nó in ra 5 đoạn gần nhất kèm khoảng cách. Thử theo thứ tự này để thấy
@@ -207,8 +207,8 @@ từng tính chất:
 Hai chế độ nữa:
 
 ```bash
-python docs\demo_vector_search.py --demo      # chạy sẵn 4 ví dụ trên
-python docs\demo_vector_search.py --compare   # so độ gần của hai câu bất kỳ
+python docs\hoc\demo_vector_search.py --demo      # chạy sẵn 4 ví dụ trên
+python docs\hoc\demo_vector_search.py --compare   # so độ gần của hai câu bất kỳ
 ```
 
 Chế độ `--compare` là chỗ bạn tự tay kiểm chứng mục 3: nhập hai câu, nó embed cả hai rồi
