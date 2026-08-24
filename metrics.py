@@ -91,8 +91,16 @@ LLM_COST = Counter(
 # Model khong co trong bang thi khong tinh tien, chi dem token.
 # ---------------------------------------------------------------------------
 PRICE_PER_1M_TOKENS = {
+    # (gia input, gia output) cho 1 TRIEU token - ai.google.dev/gemini-api/docs/pricing
+    "gemini-2.5-flash-lite": (0.10, 0.40),
     "gemini-3.1-flash-lite": (0.25, 1.50),
-    "gemini-3.1-flash": (0.30, 2.50),
+    "gemini-2.5-flash": (0.30, 2.50),
+    "gemini-3.5-flash-lite": (0.30, 2.50),
+    "gemini-3.6-flash": (0.75, 3.75),       # gia khuyen mai den 31/12/2026
+    "gemini-3.7-flash": (0.75, 3.75),       # gia khuyen mai den 31/12/2026
+    "gemini-3.5-flash": (1.50, 9.00),
+    "gemini-2.5-pro": (1.25, 10.00),        # muc gia cho prompt <= 200k token
+    "gemini-3.1-pro-preview": (2.00, 12.00),  # <= 200k token; khong co free tier
 }
 
 
