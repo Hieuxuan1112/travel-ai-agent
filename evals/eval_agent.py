@@ -13,6 +13,7 @@ Ket qua ghi ra evals/results.md
 """
 
 import argparse
+import json
 import os
 import re
 import sys
@@ -24,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from langchain_core.messages import AIMessage, HumanMessage  # noqa: E402
 
 import main_02_02 as lab  # noqa: E402
+import metrics  # noqa: E402
 
 DATASET = [
     ("Tell me about surfing in Cornwall", {"search_travel_info"}),
@@ -60,6 +62,29 @@ def called_tools(messages) -> list[str]:
         if isinstance(message, AIMessage):
             names.extend(call["name"] for call in message.tool_calls or [])
     return names
+
+
+def usage_of(messages) -> tuple[int, int]:
+    """Cong token cua MOI vong ReAct trong mot cau hoi.
+
+    Mot cau hoi goi 3 tool = 4 lan goi model, nen phai cong het chu khong lay
+    rieng lan cuoi - neu khong se bao cao chi phi thap hon thuc te vai lan.
+    """
+    input_tokens = output_tokens = 0
+    for message in messages:
+        usage = getattr(message, "usage_metadata", None)
+        if usage:
+            input_tokens += usage.get("input_tokens", 0)
+            output_tokens += usage.get("output_tokens", 0)
+    return input_tokens, output_tokens
+
+
+def cost_of(model: str, input_tokens: int, output_tokens: int) -> float | None:
+    """Quy token ra USD. Tra None neu model khong co trong bang gia."""
+    price = metrics.PRICE_PER_1M_TOKENS.get(model)
+    if price is None:
+        return None
+    return (input_tokens * price[0] + output_tokens * price[1]) / 1_000_000
 
 
 def decide_gate(
@@ -119,12 +144,17 @@ def main(limit: int | None = None, gate: bool = False) -> int:
         passed = expected.issubset(set(tools))
         score = with_retry(lambda q=question, a=answer: judge(q, a))
 
-        rows.append((question, expected, tools, passed, score, elapsed))
+        tokens_in, tokens_out = usage_of(result["messages"])
+        rows.append((question, expected, tools, passed, score, elapsed, tokens_in, tokens_out))
         print(f"[{'PASS' if passed else 'FAIL'}] {score}/5  {elapsed:5.1f}s  {question}")
 
     accuracy = sum(r[3] for r in rows) / len(rows)
     avg_score = sum(r[4] for r in rows) / len(rows)
     avg_time = sum(r[5] for r in rows) / len(rows)
+    total_in = sum(r[6] for r in rows)
+    total_out = sum(r[7] for r in rows)
+    total_cost = cost_of(lab.CHAT_MODEL, total_in, total_out)
+    cost_per_1k = f"${total_cost / len(rows) * 1000:.2f}" if total_cost is not None else "n/a"
 
     report = [
         "# Agent evaluation",
@@ -137,11 +167,13 @@ def main(limit: int | None = None, gate: bool = False) -> int:
         f"| Tool-selection accuracy | **{accuracy:.0%}** |",
         f"| Answer quality (LLM-as-judge, 1-5) | **{avg_score:.1f}** |",
         f"| Average latency | {avg_time:.1f}s |",
+        f"| Tokens (in / out) | {total_in:,} / {total_out:,} |",
+        f"| Cost per 1,000 questions | **{cost_per_1k}** |",
         "",
         "| Question | Expected tools | Tools actually called | Pass | Score |",
         "| --- | --- | --- | :-: | :-: |",
     ]
-    for question, expected, tools, passed, score, _ in rows:
+    for question, expected, tools, passed, score, *_ in rows:
         report.append(
             f"| {question} | {', '.join(sorted(expected))} | {', '.join(tools) or '-'} "
             f"| {'yes' if passed else 'no'} | {score}/5 |"
@@ -149,6 +181,21 @@ def main(limit: int | None = None, gate: bool = False) -> int:
 
     out = Path(__file__).parent / "results.md"
     out.write_text("\n".join(report) + "\n", encoding="utf-8")
+
+    # Ban may doc duoc, de compare_models.py khoi phai boc tach markdown.
+    (Path(__file__).parent / "results.json").write_text(
+        json.dumps({
+            "model": lab.CHAT_MODEL,
+            "cases": len(rows),
+            "tool_accuracy": accuracy,
+            "judge_score": avg_score,
+            "avg_latency_s": avg_time,
+            "tokens_in": total_in,
+            "tokens_out": total_out,
+            "cost_per_1k_usd": None if total_cost is None else total_cost / len(rows) * 1000,
+        }, indent=2),
+        encoding="utf-8",
+    )
     print(f"\nTool-selection accuracy {accuracy:.0%} | judge {avg_score:.1f}/5 -> {out}")
 
     # Tren GitHub Actions: day nguyen bang ket qua vao trang tom tat cua job,
