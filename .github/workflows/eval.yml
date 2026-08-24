@@ -34,15 +34,32 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Check that the API key secret exists
+      # Kiem tra secret co DUNG khong, khong chi kiem tra co TON TAI khong.
+      # Truoc day chi test rong/khong rong -> key sai thi eval chet voi "exit code 1"
+      # khong ro nguyen nhan, mat rat nhieu thoi gian do tim.
+      - name: Check the API key actually works
         id: check
         run: |
           if [ -z "$GOOGLE_API_KEY" ]; then
             echo "run=false" >> "$GITHUB_OUTPUT"
             echo "Secret GOOGLE_API_KEY chua duoc dat - bo qua cong chan." >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          python - <<'PY'
+          import os, sys
+          from google import genai
+          key = os.environ["GOOGLE_API_KEY"]
+          if key != key.strip():
+              print("::error::Secret GOOGLE_API_KEY co khoang trang thua o dau/cuoi.")
+              sys.exit(1)
+          try:
+              genai.Client(api_key=key).models.list()
+          except Exception as exc:
+              print(f"::error::Secret GOOGLE_API_KEY khong dung duoc: {str(exc)[:200]}")
+              sys.exit(1)
+          print("API key OK")
+          PY
+          echo "run=true" >> "$GITHUB_OUTPUT"
 
       - name: Run the eval gate
         if: steps.check.outputs.run == 'true'
