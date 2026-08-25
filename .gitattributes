@@ -1,0 +1,9 @@
+# Luon luu LF trong kho. Khong co dong nay, mot cong cu tren Windows doi
+# sang CRLF la ca file hien nhu bi sua het - diff vo dung, git blame hong.
+* text=auto eol=lf
+
+# File nhi phan: khong dung vao
+*.png binary
+*.jpg binary
+*.bin binary
+*.sqlite3 binary
