@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ.setdefault("GOOGLE_API_KEY", "test-key-not-used")
@@ -13,8 +14,16 @@ import main_02_02 as lab  # noqa: E402
 
 
 class _FakeResponse:
-    def __init__(self, payload):
+    """Gia lap requests.Response - can ca status_code va raise_for_status vi
+    _get_json() kiem tra ma trang thai truoc khi doc JSON."""
+
+    def __init__(self, payload, status_code: int = 200):
         self._payload = payload
+        self.status_code = status_code
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise requests.HTTPError(response=self)
 
     def json(self):
         return self._payload
@@ -104,6 +113,7 @@ def test_search_tool_joins_top_documents(monkeypatch):
     class _Doc:
         def __init__(self, text):
             self.page_content = text
+            self.metadata = {"source": "https://en.wikivoyage.org/wiki/Cornwall"}
 
     class _Retriever:
         def invoke(self, query):
