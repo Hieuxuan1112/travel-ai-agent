@@ -53,7 +53,11 @@ jobs:
               print("::error::Secret GOOGLE_API_KEY co khoang trang thua o dau/cuoi.")
               sys.exit(1)
           try:
-              genai.Client(api_key=key).models.list()
+              # Giu tham chieu toi client va LAY THAT mot phan tu: models.list()
+              # tra ve pager luoi, neu de client la object tam thi no bi dong
+              # truoc khi kip goi mang -> "client has been closed".
+              client = genai.Client(api_key=key)
+              next(iter(client.models.list()), None)
           except Exception as exc:
               print(f"::error::Secret GOOGLE_API_KEY khong dung duoc: {str(exc)[:200]}")
               sys.exit(1)

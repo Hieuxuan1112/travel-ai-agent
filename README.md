@@ -32,7 +32,7 @@ Assistant: Two beach towns with clear skies right now are St Ives (12.9 °C) and
 | | |
 |---|---|
 | 🔁 **ReAct loop, hand-wired** | The LangGraph graph (LLM node ⇄ tool node + conditional edge) is built from scratch in `main_02_02.py`, and again in three lines with `create_react_agent` in `main_03_01.py` — same behaviour, so you can see exactly what the prebuilt component does for you |
-| 🔎 **Tool 1 — semantic search** | Wikivoyage pages → chunks → Gemini embeddings → Chroma, cached on disk so restarts are instant |
+| 🔎 **Tool 1 — semantic search with citations** | Wikivoyage pages → chunks → Gemini embeddings → Chroma. Results come back numbered with source URLs, so the model can cite `[1]` and the reader can verify |
 | 🌤️ **Tool 2 — live weather** | Open-Meteo geocoding + current conditions for any city worldwide, **no API key required**. A `country` argument lets the LLM disambiguate towns that share a name (Falmouth UK vs Falmouth US) |
 | 🔌 **MCP server** | The same two tools are exposed over the Model Context Protocol, so any MCP client (Claude Desktop, Cursor, or `main_04_mcp.py`) can use them across a process boundary |
 | 🌐 **HTTP API with SSE streaming** | FastAPI service exposing the agent: `POST /chat` for plain JSON, `GET /chat/stream` pushing `tool_call` / `tool_result` / `answer` events over Server-Sent Events as they happen, `/healthz` for probes, and auto-generated OpenAPI docs at `/docs` |
@@ -40,6 +40,7 @@ Assistant: Two beach towns with clear skies right now are St Ives (12.9 °C) and
 | 🖥️ **Streaming web UI** | Streamlit chat that shows every reasoning step, tool call and tool result live, plus latency and tool-call counters |
 | 🛡️ **Safe to expose publicly** | Per-IP sliding-window rate limiting returns `429` with `Retry-After` before a stranger can drain the API quota; health and metrics endpoints stay exempt so container probes never trip it |
 | 📊 **Evaluated, not just demoed** | 8-case suite measuring tool-selection accuracy and answer quality (LLM-as-judge) → [`evals/results.md`](evals/results.md) |
+| 📉 **Retrieval measured, not assumed** | BM25 + RRF hybrid retrieval implemented and benchmarked against vector-only on a 12-query set. It did **not** beat vector-only at this corpus size, so it ships **off by default** with the numbers and reasoning recorded in [`evals/retrieval_comparison.md`](evals/retrieval_comparison.md) |
 | 🚦 **Quality is a CI gate, not a vibe** | A separate workflow replays the suite against the real model on every push and **fails the build** if tool-selection accuracy or judge score drops below threshold — thresholds rather than exact matches, because LLM-as-judge is stochastic |
 | ✅ **Tested & linted in CI** | Unit tests run with no network and no API key (services are faked), ruff-clean, GitHub Actions on every push |
 
@@ -239,6 +240,7 @@ main_04_mcp.py     agent that loads its tools over MCP
 mcp_server.py      MCP server exposing the two tools
 api.py             FastAPI service: JSON endpoint + SSE stream + /metrics + OpenAPI docs
 metrics.py         Prometheus metric definitions (latency, tools, tokens, cost)
+retrieval.py       BM25 + RRF hybrid retrieval and citation formatting
 monitoring/        Prometheus scrape config + provisioned Grafana dashboard
 app.py             Streamlit UI with live reasoning trace
 evals/             evaluation harness + results

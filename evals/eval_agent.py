@@ -220,6 +220,16 @@ def main(limit: int | None = None, gate: bool = False) -> int:
     return 0
 
 
+def annotate_error(exc: Exception) -> None:
+    """In loi theo dinh dang GitHub Actions de no hien thanh annotation.
+
+    Khong co dong nay thi CI that bai chi bao "exit code 1" - phai mo log thu cong
+    moi biet chuyen gi, ma log lai can dang nhap. Mat rat nhieu thoi gian.
+    """
+    if os.environ.get("GITHUB_ACTIONS"):
+        print(f"::error::Eval that bai: {type(exc).__name__}: {str(exc)[:300]}")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Cham diem agent tren bo cau hoi chuan.")
     parser.add_argument("--limit", type=int, default=None,
@@ -227,4 +237,8 @@ if __name__ == "__main__":
     parser.add_argument("--gate", action="store_true",
                         help="tra exit code 1 khi chat luong tut duoi nguong")
     args = parser.parse_args()
-    sys.exit(main(limit=args.limit, gate=args.gate))
+    try:
+        sys.exit(main(limit=args.limit, gate=args.gate))
+    except Exception as exc:
+        annotate_error(exc)
+        raise
