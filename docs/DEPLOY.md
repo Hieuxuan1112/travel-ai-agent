@@ -205,3 +205,59 @@ Job khai báo quyền tối thiểu: `packages: write` để đẩy image, `secu
 `:latest` cho tiện tay, và `:<sha>` để truy ngược image đang chạy sinh ra từ commit nào.
 **Khi deploy thật thì dùng tag SHA**, không dùng `latest` — `latest` đổi dưới chân mình lúc
 nào không biết.
+
+## 10. Deploy bản API lên Azure Container Apps
+
+Mục 7 ở trên viết "chưa làm vì yêu cầu là không tốn đồng nào". Đã làm được, và
+**vẫn không tốn đồng nào** — nhờ hai thứ:
+
+- **Azure for Students**: $100 credit, **không cần thẻ**, xác minh bằng email trường.
+  Hết credit thì Microsoft **khoá subscription** chứ không tính tiền. Đây là điểm
+  khác biệt quyết định so với Google Cloud: GCP bắt gắn thẻ và **không có hard cap**,
+  chỉ có cảnh báo ngân sách.
+- **`min-replicas = 0`**: không ai dùng thì không có replica nào chạy → $0/tháng,
+  nằm trọn trong free grant (180.000 vCPU-giây + 360.000 GiB-giây + 2 triệu request).
+  Đánh đổi: request đầu tiên sau khi ngủ mất ~15-20 giây cold start.
+
+### Vì sao Container Apps chứ không phải AKS
+
+Một agent hai tool không cần Kubernetes. AKS còn không có free tier. Container Apps
+cho scale-to-zero, ingress HTTPS sẵn, và không phải quản node nào.
+
+### Xác thực: OIDC keyless, không có key dài hạn
+
+Cách cũ là tạo service principal rồi nhét client secret vào GitHub Secrets — một
+mật khẩu sống nhiều tháng, lộ repo là lộ luôn tài khoản cloud.
+
+Cách đang dùng: **federated credential**. GitHub phát một OIDC token sống 1 tiếng,
+Azure kiểm token đó có đúng đến từ nhánh `main` của đúng repo này không, rồi đổi lấy
+credential ngắn hạn. **Không có mật khẩu nào được lưu ở đâu cả.**
+
+Ba secret trong repo (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`)
+chỉ là **định danh**, không phải bí mật — biết chúng cũng không đăng nhập được.
+
+### Phạm vi quyền
+
+Vai trò `Contributor` nhưng gán ở mức **resource group `rg-travel-agent`**, không
+phải mức subscription. Danh tính đó toàn quyền trong cái hộp đó và không đụng được
+gì bên ngoài.
+
+### Job `deploy` làm gì
+
+1. Đăng nhập bằng OIDC (`azure/login@v2`)
+2. Tạo Container Apps environment nếu chưa có — `env show || env create`, chạy lại
+   nhiều lần không sao
+3. Lần đầu `containerapp create`, những lần sau `containerapp update --image` —
+   chỉ đổi image, giữ nguyên cấu hình
+4. Ép `min-replicas 0` để chắc chắn không đốt credit
+5. Gọi `/healthz`, thử lại 6 lần cách nhau 15 giây (cold start có thể lâu)
+
+`GOOGLE_API_KEY` và `DATABASE_URL` được đưa vào dạng **Container Apps secret** rồi
+tham chiếu qua `secretref:`, không phải env var trần — giá trị không hiện trong
+`az containerapp show`.
+
+### Image lấy từ đâu
+
+Từ `ghcr.io` do job `build` đẩy lên, **dùng tag SHA chứ không dùng `latest`**: phải
+biết chính xác image đang chạy sinh ra từ commit nào. Package phải để **public** thì
+Azure mới kéo được mà không cần cấu hình thêm xác thực registry.

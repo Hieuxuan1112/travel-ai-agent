@@ -117,3 +117,101 @@ jobs:
             echo "docker pull $IMAGE:${{ github.event.workflow_run.head_sha || github.sha }}"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # ==========================================================================
+  # Dua image vua day len Azure Container Apps.
+  #
+  # Vi sao Container Apps chu khong phai AKS: mot agent hai tool khong can
+  # Kubernetes. Container Apps co scale-to-zero, nen khong ai dung thi khong
+  # ton dong nao trong goi Azure for Students.
+  #
+  # Vi sao OIDC chu khong phai service principal secret: GitHub tu phat token
+  # song 1 tieng, Azure doi lay credential ngan han. KHONG co key dai han nao
+  # nam trong repo secrets - mat repo cung khong mat tai khoan cloud.
+  # ==========================================================================
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # BAT BUOC: khong co dong nay thi GitHub khong phat OIDC token
+      contents: read
+
+    env:
+      RG: rg-travel-agent
+      LOCATION: southeastasia   # cung region voi Neon -> app va database gan nhau
+      ENVIRONMENT: travel-agent-env
+      APP: travel-agent-api
+
+    steps:
+      - name: Dat ten image
+        run: |
+          echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+          echo "TAG=${{ github.event.workflow_run.head_sha || github.sha }}" >> "$GITHUB_ENV"
+
+      # Khong co mat khau o day: chi co 3 dinh danh, deu khong phai bi mat.
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Cai extension containerapp
+        run: az extension add --name containerapp --upgrade --only-show-errors
+
+      # Tao mot lan roi thoi. Lan sau `show` thanh cong -> bo qua.
+      - name: Tao Container Apps environment neu chua co
+        run: |
+          az containerapp env show -n "$ENVIRONMENT" -g "$RG" --only-show-errors >/dev/null 2>&1 \
+            || az containerapp env create -n "$ENVIRONMENT" -g "$RG" -l "$LOCATION" --only-show-errors
+
+      # Lan dau: create. Nhung lan sau: update - chi doi image, giu nguyen cau hinh.
+      - name: Trien khai
+        run: |
+          if az containerapp show -n "$APP" -g "$RG" --only-show-errors >/dev/null 2>&1; then
+            echo "App da ton tai -> chi doi image sang $TAG"
+            az containerapp update -n "$APP" -g "$RG" \
+              --image "$IMAGE:$TAG" --only-show-errors
+          else
+            echo "Tao app lan dau"
+            az containerapp create -n "$APP" -g "$RG" \
+              --environment "$ENVIRONMENT" \
+              --image "$IMAGE:$TAG" \
+              --target-port 8000 \
+              --ingress external \
+              --min-replicas 0 \
+              --max-replicas 2 \
+              --cpu 0.5 --memory 1.0Gi \
+              --secrets "google-api-key=${{ secrets.GOOGLE_API_KEY }}" \
+                        "database-url=${{ secrets.DATABASE_URL }}" \
+              --env-vars GOOGLE_API_KEY=secretref:google-api-key \
+                         DATABASE_URL=secretref:database-url \
+              --only-show-errors
+          fi
+
+      # min-replicas=0: khong ai dung thi khong chay replica nao -> $0.
+      # Danh doi la cold start ~15-20s cho request dau tien.
+      - name: Bao dam scale ve 0 khi khong ai dung
+        run: |
+          az containerapp update -n "$APP" -g "$RG" \
+            --min-replicas 0 --max-replicas 2 --only-show-errors
+
+      - name: Kiem tra /healthz
+        run: |
+          FQDN=$(az containerapp show -n "$APP" -g "$RG" \
+            --query properties.configuration.ingress.fqdn -o tsv --only-show-errors)
+          echo "URL: https://$FQDN"
+          # Cold start co the lau -> thu lai vai lan thay vi that bai ngay.
+          for i in 1 2 3 4 5 6; do
+            CODE=$(curl -s -o /dev/null -m 30 -w "%{http_code}" "https://$FQDN/healthz" || echo 000)
+            echo "  lan $i: $CODE"
+            [ "$CODE" = "200" ] && break
+            sleep 15
+          done
+          [ "$CODE" = "200" ] || { echo "::error::/healthz khong tra 200"; exit 1; }
+          {
+            echo "### Da deploy len Azure Container Apps"
+            echo ""
+            echo "- URL: https://$FQDN"
+            echo "- Docs: https://$FQDN/docs"
+            echo "- Image: \`$IMAGE:$TAG\`"
+          } >> "$GITHUB_STEP_SUMMARY"
