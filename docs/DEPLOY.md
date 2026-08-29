@@ -140,3 +140,51 @@ thay vì để request đầu tiên sau khi ngủ bị lỗi.
 
 **Nút "Clear conversation" không xoá gì dưới database** — nó chỉ mở một thread mới. Hội
 thoại cũ vẫn truy lại được nếu còn giữ URL.
+
+## 9. Pipeline CD — đóng gói image
+
+`.github/workflows/cd.yml` chạy sau khi `ci.yml` xanh: build image, quét lỗ hổng, đẩy lên
+**GitHub Container Registry** (`ghcr.io`).
+
+### Vì sao ghcr.io chứ không phải Artifact Registry
+
+ghcr.io miễn phí không giới hạn cho image public. Artifact Registry của Google chỉ free
+0,5 GB — image này **đo được 1,45 GB** nên vượt ngay từ lần build đầu.
+
+### Vì sao `workflow_run` chứ không bắt thẳng vào `push`
+
+`ci.yml` trả lời "code có đúng không", `cd.yml` trả lời "có artifact nào sẵn sàng deploy
+không". Bắt thẳng vào `push` thì một commit hỏng vẫn sinh ra image nằm trên registry.
+
+Cái bẫy của `workflow_run`: nó chạy trong ngữ cảnh nhánh mặc định chứ **không** tự lấy
+commit đã kích hoạt CI. Không ghi rõ `ref: head_sha` là có ngày CI xanh ở commit A nhưng
+image lại build từ commit B. Và `workflow_run` bắn cả khi CI **đỏ** — nó chỉ báo "CI đã
+chạy xong" — nên phải tự lọc bằng `if: ... conclusion == 'success'`.
+
+### Vì sao build trước, đẩy sau
+
+Quét xong mới đẩy. Đẩy trước rồi mới quét thì image hỏng đã nằm sẵn trên registry cho
+người khác kéo về.
+
+### Hai bước quét Trivy, hai mục đích khác nhau
+
+| Bước | Mức | Chặn? | Lý do |
+|---|---|---|---|
+| Báo cáo | HIGH + CRITICAL | Không | Gom vào tab Security để còn theo dõi |
+| Chặn | CRITICAL **đã có bản vá** | Có | Chỉ chặn ở cái thật sự sửa được |
+
+Chặn theo HIGH thì CD đỏ vĩnh viễn, vì ảnh `python:3.12-slim` lúc nào cũng còn vài CVE HIGH
+chưa ai vá. Một cổng luôn đỏ thì không ai thèm nhìn, còn tệ hơn là không có cổng.
+`ignore-unfixed: true` vì CVE chưa có bản vá thì báo cũng không làm gì được.
+
+### Xác thực
+
+Dùng `secrets.GITHUB_TOKEN` — GitHub tự cấp cho mỗi lần chạy, **không phải tạo secret nào**.
+Job khai báo quyền tối thiểu: `packages: write` để đẩy image, `security-events: write` để
+đẩy kết quả quét.
+
+### Hai tag mỗi lần build
+
+`:latest` cho tiện tay, và `:<sha>` để truy ngược image đang chạy sinh ra từ commit nào.
+**Khi deploy thật thì dùng tag SHA**, không dùng `latest` — `latest` đổi dưới chân mình lúc
+nào không biết.
