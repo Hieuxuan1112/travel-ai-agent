@@ -261,3 +261,37 @@ tham chiếu qua `secretref:`, không phải env var trần — giá trị khôn
 Từ `ghcr.io` do job `build` đẩy lên, **dùng tag SHA chứ không dùng `latest`**: phải
 biết chính xác image đang chạy sinh ra từ commit nào. Package phải để **public** thì
 Azure mới kéo được mà không cần cấu hình thêm xác thực registry.
+
+### Đã chạy thật
+
+```
+https://travel-agent-api.nicewave-bb4d94a1.japaneast.azurecontainerapps.io/docs
+```
+
+Kiểm chứng: `/healthz` trả `{"status":"ok",...}`, `/chat` trả 200 và agent gọi đúng
+`weather_forecast`, trả lời trong 3,5 giây.
+
+### Năm lần đỏ trước khi xanh — và bài học
+
+| # | Lỗi | Nguyên nhân thật |
+|---|---|---|
+| 1 | `AADSTS700213` | Federated credential còn nguyên chữ giữ chỗ `{Organization ID}` / `{Repository ID}` vì hai ô đó bị bỏ trống |
+| 2 | `RequestDisallowedByAzure`, target `workspace-...` | Log Analytics workspace bị chặn ở `southeastasia` |
+| 3 | Y hệt, vẫn target `workspace-...` | Chặn cả ở `eastus` → bỏ hẳn workspace bằng `--logs-destination none` |
+| 4 | `RequestDisallowedByAzure`, target `travel-agent-env` | Giờ mới thật sự là region → vòng thử nhiều region trong một lần chạy |
+| 5 | `InternalServerError` | Gộp `create` + `--secrets` một lệnh → tách thành ba lệnh nhỏ |
+
+**Region cuối cùng được chấp nhận: `japaneast`.** Vòng lặp bị từ chối 8 region trước đó
+(`southeastasia`, `eastus`, `eastus2`, `westus2`, `westus3`, `centralus`, `northeurope`,
+`westeurope`). Tokyo gần Singapore nên độ trễ tới Neon đỡ hơn nhiều so với `eastus`.
+
+**Ba bài học đáng nhớ:**
+
+1. **Đọc kỹ `Target:` trong thông báo lỗi.** Hai lần liền lỗi chỉ đích danh `workspace-...`
+   chứ không phải environment, nhưng vẫn đi đổi region — sai hướng, tốn hai lần chạy.
+2. **Đừng đoán thứ không tra được.** Danh sách region cho phép không công bố ở đâu cả. Cho
+   workflow thử lần lượt trong *một* lần chạy rẻ hơn nhiều so với đoán mỗi lần một push:
+   mỗi lần bị từ chối chỉ mất ~8 giây, còn mỗi lần push mất ~10 phút.
+3. **Lệnh to thì lỗi mờ.** `az containerapp create` ôm cả image, ingress, scaling, resource
+   và hai secret trả về đúng một dòng `InternalServerError`. Tách thành ba lệnh nhỏ thì lỗi
+   tự khai ra nó ở đâu.
