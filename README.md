@@ -5,7 +5,7 @@
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-ff69b4)
 ![MCP](https://img.shields.io/badge/MCP-stdio_server-purple)
 
-### ▶ [Try it live](https://travel-ai-agent-92l7axm85zjfj2kmqu5e4r.streamlit.app)
+### ▶ [Try it live](https://travel-ai-agent.streamlit.app)
 
 *(free tier — the app may need ~30 s to wake up on the first visit)*
 

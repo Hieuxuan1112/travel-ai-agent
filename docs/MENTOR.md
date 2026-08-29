@@ -1029,7 +1029,7 @@ trước — kể cả tài liệu của chính mình.
 
 ### Trạng thái hiện tại
 
-**Đã chạy công khai:** https://travel-ai-agent-92l7axm85zjfj2kmqu5e4r.streamlit.app
+**Đã chạy công khai:** https://travel-ai-agent.streamlit.app
 
 Streamlit Cloud tự deploy lại mỗi lần push lên `main`, không phải làm gì thêm. Hai điểm
 còn hở, đã ghi ở mục 15: bản công khai chạy `app.py` nên **không có rate limit** (cơ chế đó
