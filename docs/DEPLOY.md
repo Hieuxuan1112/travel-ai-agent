@@ -1,7 +1,7 @@
 # Deploy — bản đang chạy và các phương án khác
 
 **Bản đang chạy (miễn phí, không cần thẻ):**
-https://travel-ai-agent-92l7axm85zjfj2kmqu5e4r.streamlit.app
+https://cornwall-travel-agent.streamlit.app
 
 Nền tảng: **Streamlit Community Cloud**, chạy trực tiếp `app.py` từ nhánh `main` của repo.
 
@@ -47,17 +47,34 @@ Chỉ cần `git push`, đợi 1–2 phút rồi tải lại trang.
 
 Đổi secret hoặc cấu hình thì vào **Manage app** (góc dưới bên phải trang app) → Settings.
 
-## 4. Nên làm: đổi URL cho gọn
+## 4. URL rút gọn (đã làm)
 
-URL mặc định có đuôi ngẫu nhiên `travel-ai-agent-92l7axm85zjfj2kmqu5e4r.streamlit.app` —
-dán vào CV trông rất xấu. Vào **Manage app → Settings → General → Custom subdomain**, đổi
-thành `travel-ai-agent` (nếu chưa ai lấy) để có:
+URL mặc định có đuôi ngẫu nhiên, dán vào CV trông rất xấu. Đã đổi qua
+**Manage app → Settings → General → Custom subdomain** thành:
 
 ```
-https://travel-ai-agent.streamlit.app
+https://cornwall-travel-agent.streamlit.app
 ```
 
-Đổi xong nhớ sửa lại link ở README và CV.
+Tên `travel-ai-agent` **đã có người khác lấy mất** — đó là lý do phải dùng
+`cornwall-travel-agent`.
+
+**Hai cái bẫy đã dính thật:**
+
+1. Đổi subdomain làm URL cũ **chết hẳn, trả 404, không redirect**. README, `MENTOR.md`
+   và 34 file CV vẫn trỏ vào URL cũ; ai bấm vào cũng ra trang lỗi.
+2. Có lúc đã sửa nhầm sang `travel-ai-agent.streamlit.app` — **app của người khác**.
+   Tệ hơn link 404, vì trông như nhận vơ sản phẩm người ta.
+
+Bài học: kiểm link bằng cách **mở trình duyệt nhìn tận mắt**, đừng tin HTTP status.
+Streamlit Cloud là SPA nên trả `200` cho cả trang lỗi lẫn app của người lạ. Dấu hiệu
+duy nhất đáng tin là dòng **"Created by ..."** trên trang.
+
+Sau mỗi lần đổi địa chỉ, grep sạch URL cũ ngay trong cùng một lần:
+
+```bash
+grep -rn "<đuôi-cũ>" --include=*.md --include=*.tex .
+```
 
 ## 5. Những điều cần biết
 
