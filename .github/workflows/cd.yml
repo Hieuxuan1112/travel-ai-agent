@@ -138,9 +138,11 @@ jobs:
 
     env:
       RG: rg-travel-agent
-      # Neon o Singapore, dat app o eastus lam moi lan ghi checkpoint mat them
-      # ~200ms. Van phai chiu: southeastasia bi Azure chan cho tai khoan sinh vien.
-      LOCATION: eastus
+      # Thu theo thu tu nay. southeastasia dat truoc vi Neon o Singapore -
+      # cung region thi moi lan ghi checkpoint khong phai vuot Thai Binh Duong.
+      REGIONS: >-
+        southeastasia eastus eastus2 westus2 westus3 centralus
+        northeurope westeurope japaneast australiaeast canadacentral uksouth
       ENVIRONMENT: travel-agent-env
       APP: travel-agent-api
 
@@ -161,16 +163,37 @@ jobs:
         run: az extension add --name containerapp --upgrade --only-show-errors
 
       # Tao mot lan roi thoi. Lan sau `show` thanh cong -> bo qua.
+      # Subscription sinh vien chi duoc deploy o mot so region do Microsoft chon,
+      # va danh sach do KHONG tra ra duoc: khong phai Azure Policy, khong hien o
+      # muc Policies. Doan tung region thi moi lan doan mat mot lan chay CI.
+      # Thay vao do: thu lan luot trong CUNG mot lan chay, dung o region dau tien
+      # duoc chap nhan. Moi lan bi tu choi chi mat ~8 giay.
       - name: Tao Container Apps environment neu chua co
         run: |
-          # --logs-destination none: KHONG tao Log Analytics workspace kem theo.
-          # Mac dinh no tu tao mot cai, va chinh cai workspace do bi Azure chan
-          # (RequestDisallowedByAzure) o ca southeastasia lan eastus. Bo workspace
-          # di thi khong con gi de chan.
-          # Danh doi: khong luu log dai han. Log truc tiep van xem duoc bang
-          # `az containerapp logs show`, con so lieu da co Prometheus/Grafana lo.
-          az containerapp env show -n "$ENVIRONMENT" -g "$RG" --only-show-errors >/dev/null 2>&1 \
-            || az containerapp env create -n "$ENVIRONMENT" -g "$RG" -l "$LOCATION" --logs-destination none --only-show-errors
+          set -u
+          if az containerapp env show -n "$ENVIRONMENT" -g "$RG" --only-show-errors >/dev/null 2>&1; then
+            LOC=$(az containerapp env show -n "$ENVIRONMENT" -g "$RG" --query location -o tsv)
+            echo "Environment da ton tai o $LOC"
+            echo "LOCATION=$LOC" >> "$GITHUB_ENV"
+            exit 0
+          fi
+
+          # --logs-destination none: khong tao Log Analytics workspace kem theo.
+          # Chinh cai workspace do da bi chan o ca southeastasia lan eastus.
+          # Danh doi: khong luu log dai han; log truc tiep van xem duoc bang
+          # `az containerapp logs show`, so lieu da co Prometheus/Grafana lo.
+          for LOC in $REGIONS; do
+            echo "--- thu region: $LOC"
+            if az containerapp env create -n "$ENVIRONMENT" -g "$RG" -l "$LOC"                  --logs-destination none --only-show-errors; then
+              echo "Tao duoc o $LOC"
+              echo "LOCATION=$LOC" >> "$GITHUB_ENV"
+              echo "REGION_OK=$LOC" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            echo "$LOC bi tu choi, thu tiep"
+          done
+          echo "::error::Khong region nao trong danh sach duoc subscription chap nhan"
+          exit 1
 
       # Lan dau: create. Nhung lan sau: update - chi doi image, giu nguyen cau hinh.
       - name: Trien khai
