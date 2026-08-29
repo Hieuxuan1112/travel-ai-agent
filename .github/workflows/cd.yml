@@ -138,7 +138,12 @@ jobs:
 
     env:
       RG: rg-travel-agent
-      LOCATION: southeastasia   # cung region voi Neon -> app va database gan nhau
+      # southeastasia bi Azure chan cho subscription sinh vien:
+      #   RequestDisallowedByAzure khi tao Log Analytics workspace kem theo.
+      # Chinh sach nay la cua Microsoft cho tai khoan mien phi, KHONG hien trong
+      # muc Policies de tra danh sach region duoc phep -> phai thu.
+      # Doi lai: Neon o Singapore nen moi lan ghi checkpoint mat them ~200ms.
+      LOCATION: eastus
       ENVIRONMENT: travel-agent-env
       APP: travel-agent-api
 
