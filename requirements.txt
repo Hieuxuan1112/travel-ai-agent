@@ -13,6 +13,11 @@ langchain-mcp-adapters==0.3.2
 # Web UI (app.py)
 streamlit==1.61.1
 
+# Luu state hoi thoai xuong Postgres (persistence.py).
+# Khong dat DATABASE_URL thi khong dung toi, app tu lui ve InMemorySaver.
+langgraph-checkpoint-postgres==3.1.2
+psycopg[binary]==3.3.4
+
 # HTTP API + SSE (api.py)
 fastapi==0.121.3
 uvicorn[standard]==0.40.0

@@ -89,3 +89,54 @@ Streamlit Cloud chỉ chạy được app Streamlit. Muốn có URL cho `api.py`
 - **Hugging Face Space bản Docker**: cần PRO $9/tháng.
 
 Chưa làm vì yêu cầu là không tốn đồng nào.
+
+## 8. Lưu hội thoại xuống Postgres
+
+Trước đây lịch sử chat nằm trong `st.session_state` — F5 một cái là mất sạch, và mỗi
+lượt hỏi phải tự ghép lại 4 lượt gần nhất để agent hiểu câu nối tiếp.
+
+Bây giờ dùng **LangGraph checkpointer** (`persistence.py`):
+
+| Có `DATABASE_URL` | Không có |
+|---|---|
+| `PostgresSaver` — hội thoại sống qua F5, qua restart server, qua cả đổi máy | `InMemorySaver` — state trong RAM tiến trình, mất khi restart |
+
+**Không bắt buộc `DATABASE_URL`.** CI không có database, và bắt buộc nó thì người clone
+repo về không chạy thử được ngay. Thiếu biến thì tự lui về `InMemorySaver`, không ném lỗi.
+
+### Vì sao `thread_id` nằm trên URL
+
+F5 là Streamlit tạo phiên mới và xoá sạch `session_state`. Nếu `thread_id` chỉ nằm trong
+đó thì ghi xuống Postgres cũng vô nghĩa: refresh xong sinh thread mới, màn hình vẫn trắng.
+Đẩy nó lên query param (`?thread=<uuid>`) thì refresh mở lại đúng hội thoại cũ, và dán URL
+cho người khác họ cũng mở được đúng thread đó.
+
+### Vì sao vẫn phải cắt cửa sổ lịch sử
+
+Checkpointer giữ **toàn bộ** hội thoại. Ném hết vào model mỗi lượt thì 30 lượt chat là vài
+chục nghìn token cho *mỗi* câu hỏi. `llm_node` cắt bằng `trim_messages(start_on="human")` —
+state dưới database vẫn nguyên, chỉ phần gửi cho model bị giới hạn (`MAX_HISTORY_MESSAGES`,
+mặc định 30).
+
+`start_on="human"` không phải chi tiết làm màu: cắt bừa có thể bỏ lại một `ToolMessage` mồ
+côi không còn `AIMessage` tool_call đi trước, và Gemini từ chối nguyên request. Ngưỡng 30
+lớn hơn số message tối đa một lượt sinh ra (`MAX_TOOL_CALLS=8` → khoảng 17), nên lượt đang
+chạy không bao giờ bị đụng tới.
+
+### Cấu hình khi deploy
+
+Lấy chuỗi kết nối miễn phí ở https://neon.com (0,5 GB, 100 giờ compute/tháng, không cần
+thẻ, tự ngủ sau 5 phút). Dùng bản **pooled** (host có `-pooler`).
+
+Streamlit Cloud: **Manage app → Settings → Secrets**, thêm một dòng:
+
+```
+DATABASE_URL = "postgresql://...-pooler.../neondb?sslmode=require"
+```
+
+Pool đặt `min_size=0` để Neon ngủ được (ngủ thì không đốt giờ compute của gói free) và
+`check=ConnectionPool.check_connection` để connection chết sau khi Neon ngủ được mở lại,
+thay vì để request đầu tiên sau khi ngủ bị lỗi.
+
+**Nút "Clear conversation" không xoá gì dưới database** — nó chỉ mở một thread mới. Hội
+thoại cũ vẫn truy lại được nếu còn giữ URL.
