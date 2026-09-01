@@ -585,12 +585,12 @@ Học thuộc bảng này là trả lời được phần lớn câu hỏi đị
 | Cắt chunk | 1024 ký tự, chồng lấn 128 |
 | Model | `gemini-3.1-flash-lite` + `gemini-embedding-001` |
 | Tool-selection accuracy | **100%** (8/8 ca) |
-| Answer quality (LLM-judge) | **4.1/5** |
+| Answer quality (LLM-judge) | **3.5/5** — một bước 4-5/5, nhiều bước tụt còn 2/5 (mục 10) |
 | Latency trung bình | 10,4 s |
 | **p95 latency** | **7,55 s** |
 | Chi phí | **$0,0035 cho 5 request** ≈ $0,0007/câu ≈ $0,70 cho 1000 câu |
 | Token (2 câu hỏi) | 5.633 vào / 261 ra, qua **6 lần gọi model** |
-| Test | **29**, offline, ~20 s |
+| Test | **56**, offline, ~20 s |
 | Giới hạn tần suất | 30 câu/IP/giờ (mặc định), trả `429` + `Retry-After` |
 | Docker image | 1,4 GB; build đầu 3 phút 50, rebuild ~15 giây |
 | Số dịch vụ trong compose | 4 (api, ui, prometheus, grafana) |
