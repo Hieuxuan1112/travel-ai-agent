@@ -202,8 +202,8 @@ to see which tools the agent actually called, and has a second LLM grade each an
 | Metric | Result |
 | --- | --- |
 | Tool-selection accuracy | **100%** (8/8) |
-| Answer quality (LLM-as-judge, 1–5) | **4.1** |
-| Average latency | 10.4 s |
+| Answer quality (LLM-as-judge, 1–5) | **3.5** |
+| Average latency | 7.0 s |
 
 Full per-question breakdown: [`evals/results.md`](evals/results.md).
 

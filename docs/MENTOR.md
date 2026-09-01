@@ -139,7 +139,7 @@ khi phỏng vấn về kiến trúc.
 | `app.py` | Giao diện web Streamlit |
 | `metrics.py` | Định nghĩa các chỉ số Prometheus |
 | `evals/eval_agent.py` | Chấm điểm agent trên bộ 8 câu hỏi |
-| `tests/` | 29 test chạy offline |
+| `tests/` | 56 test chạy offline |
 | `monitoring/` | Cấu hình Prometheus + dashboard Grafana |
 | `Dockerfile`, `docker-compose.yml` | Đóng gói và chạy cả hệ thống |
 
@@ -495,14 +495,37 @@ tiêu chí "hữu ích, cụ thể, có bám dữ liệu thật".
 | Chỉ số | Kết quả |
 |---|---|
 | Tool-selection accuracy | **100%** (8/8) |
-| Answer quality (1–5) | **4.1** |
-| Latency trung bình | 10,4 s |
+| Answer quality (1–5) | **3.5** |
+| Latency trung bình | 7,0 s |
 
 **Và một điểm yếu thật, phải nói ra nếu được hỏi:** câu *"I want a surfing town in Cornwall
-where it is not raining today"* chọn đúng công cụ nhưng chỉ được **2/5 điểm**. Agent gọi
-`weather_forecast` ba lần nhưng câu trả lời không chốt được một thị trấn cụ thể. Đây là ví
-dụ hoàn hảo cho việc **chọn đúng công cụ không đồng nghĩa với trả lời tốt** — và là lý do
-phải đo hai chỉ số chứ không phải một.
+where it is not raining today"* chọn đúng công cụ nhưng chỉ được **2/5 điểm**. Đây là ví dụ
+hoàn hảo cho việc **chọn đúng công cụ không đồng nghĩa với trả lời tốt** — và là lý do phải
+đo hai chỉ số chứ không phải một.
+
+**Nguyên nhân đã truy ra bằng thí nghiệm** (đừng đoán, hãy đo). Giả thuyết ban đầu là "agent
+không chốt được một thị trấn cụ thể" — **sai**. Cách kiểm: đưa judge chấm 5 lần cùng một câu
+trả lời:
+
+| Câu trả lời cho cùng câu hỏi đó | Điểm judge (5 lần) |
+|---|---|
+| Bản mỏng, 273 ký tự: *"cả ba đều overcast, không mưa"* | `2, 2, 2, 2, 2` |
+| Bản dày, có `14,1°C`, `gió 10,4 km/h` cho từng thị trấn | `5, 5, 5, 5, 5` |
+
+Judge **hoàn toàn tất định** — nhiễu nằm ở agent, không nằm ở người chấm. Và bản 5/5 cũng
+liệt kê **bốn** thị trấn chứ không chốt một cái nào, nên "không chốt" không phải nguyên nhân.
+
+Nguyên nhân thật: rubric của judge đòi *"grounded in real data (named towns, real weather
+numbers)"*. Câu **một bước** chỉ có một kết quả tool nên trích số vào câu trả lời một cách tự
+nhiên. Câu **nhiều bước** gom 3-5 kết quả rồi tóm tắt định tính — **vứt hết số đi** — nên mất
+điểm ở đúng tiêu chí đó. `SYSTEM_PROMPT` hiện không có câu nào yêu cầu giữ lại số đo.
+
+Hệ quả cần biết: điểm dao động theo từng lần chạy. Chạy lại câu *"which coastal town should I
+visit today"* ra **5/5** (câu trả lời dài, có số), trong khi lần eval ghi nhận **2/5**. Vậy
+**3.5/5 là điểm của một lần bốc thăm, không phải trần năng lực của agent.**
+
+⚠️ Và một rủi ro vận hành: `MIN_JUDGE_SCORE = 3.5` mà đo được đúng `3.5` → cổng CI qua với
+biên **bằng 0**. Lần chạy sau lệch xuống một chút là CD bị chặn.
 
 Biết và nói ra điểm yếu này trong phỏng vấn tạo ấn tượng tốt hơn hẳn việc chỉ khoe 100%.
 
@@ -540,7 +563,7 @@ PR từ fork đỏ vì thiếu secret — nên workflow eval tự bỏ qua trong
 
 ## 11. Test và CI
 
-**29 test, chạy hoàn toàn offline** — không gọi mạng, không cần API key, xong trong ~20 giây.
+**56 test, chạy hoàn toàn offline** — không gọi mạng, không cần API key, xong trong ~16 giây.
 
 Cách làm: thay thế thứ ở ngoài bằng đồ giả.
 
@@ -586,9 +609,9 @@ Học thuộc bảng này là trả lời được phần lớn câu hỏi đị
 | Model | `gemini-3.1-flash-lite` + `gemini-embedding-001` |
 | Tool-selection accuracy | **100%** (8/8 ca) |
 | Answer quality (LLM-judge) | **3.5/5** — một bước 4-5/5, nhiều bước tụt còn 2/5 (mục 10) |
-| Latency trung bình | 10,4 s |
-| **p95 latency** | **7,55 s** |
-| Chi phí | **$0,0035 cho 5 request** ≈ $0,0007/câu ≈ $0,70 cho 1000 câu |
+| Latency trung bình | 7,0 s (8 ca eval) |
+| **p95 latency** | **7,55 s** (Prometheus) |
+| Chi phí | **$0,0035 cho 5 request** ≈ $0,0007/câu (Prometheus); bộ eval nhiều tool hơn nên tốn **$1,25 cho 1000 câu** |
 | Token (2 câu hỏi) | 5.633 vào / 261 ra, qua **6 lần gọi model** |
 | Test | **56**, offline, ~20 s |
 | Giới hạn tần suất | 30 câu/IP/giờ (mặc định), trả `429` + `Retry-After` |
@@ -761,9 +784,9 @@ Nói ra được giới hạn là dấu hiệu của người hiểu hệ thốn
 **Về chất lượng**
 
 19. *Làm sao biết agent tốt?* → Hai chỉ số: tool-selection accuracy đọc từ state thật (100%)
-    và LLM-as-judge (4.1/5). Kèm ví dụ ca 2/5 để cho thấy hai chỉ số bổ sung nhau.
+    và LLM-as-judge (3.5/5). Kèm ví dụ ca 2/5 để cho thấy hai chỉ số bổ sung nhau.
 20. *Test hệ thống có LLM kiểu gì?* → Thay agent và API ngoài bằng đồ giả, test hợp đồng:
-    đúng thứ tự sự kiện, đúng schema, đúng mã lỗi. 29 test chạy offline trong 20 giây.
+    đúng thứ tự sự kiện, đúng schema, đúng mã lỗi. 56 test chạy offline trong 16 giây.
 
 **Về vận hành**
 
@@ -796,10 +819,10 @@ docker compose up -d
 3. **(60 giây) Mở `/docs`** — API có schema, validation, tài liệu tự sinh.
 4. **(60 giây) Mở Grafana** http://localhost:3000/d/travel-agent — "p95 7,55 giây, và tôi
    đo được cả chi phí: $0,0007 mỗi câu hỏi."
-5. **(60 giây) Mở `evals/results.md`** — "100% chọn đúng công cụ, 4.1/5 chất lượng. Có một
+5. **(60 giây) Mở `evals/results.md`** — "100% chọn đúng công cụ, 3.5/5 chất lượng. Có một
    ca 2/5, đây là hạn chế tôi đã biết và đang xử lý."
 
-Kết bằng một câu: *"Toàn bộ chạy bằng một lệnh `docker compose up`, có 29 test và CI."*
+Kết bằng một câu: *"Toàn bộ chạy bằng một lệnh `docker compose up`, có 56 test và CI."*
 
 ---
 
