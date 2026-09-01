@@ -26,6 +26,8 @@
 18. [Từ điển thuật ngữ](#18-từ-điển-thuật-ngữ)
 19. [Giới hạn tần suất — chuẩn bị cho việc mở công khai](#19-giới-hạn-tần-suất--chuẩn-bị-cho-việc-mở-công-khai)
 20. [Đưa dữ liệu vào image và chuyện deploy](#20-đưa-dữ-liệu-vào-image-và-chuyện-deploy)
+21. [Hội thoại bền vững — checkpointer trên PostgreSQL](#21-hội-thoại-bền-vững--checkpointer-trên-postgresql)
+22. [Từ commit đến cloud — CD, Trivy, GHCR và Azure OIDC](#22-từ-commit-đến-cloud--cd-trivy-ghcr-và-azure-oidc)
 
 ---
 
@@ -700,9 +702,9 @@ Nói ra được giới hạn là dấu hiệu của người hiểu hệ thốn
 | Giới hạn | Ảnh hưởng |
 |---|---|
 | Bản deploy công khai không có rate limit | Giới hạn tần suất nằm trong `api.py`, còn bản chạy công khai là `app.py` (Streamlit) |
-| Chỉ giao diện Streamlit được deploy | Bản FastAPI (`/docs`, `/chat/stream`, `/metrics`) mới chỉ chạy local |
+| `/metrics` chưa mở ra ngoài | Bản FastAPI đã deploy lên Azure Container Apps (mục 22), nhưng Prometheus/Grafana vẫn chỉ chạy local qua compose |
 | Kho kiến thức chỉ 4 trang về Cornwall | Hỏi vùng khác là không có dữ liệu |
-| Không nhớ hội thoại nhiều lượt | Hỏi "còn thị trấn kia thì sao?" là không hiểu |
+| Lịch sử gửi cho model bị cắt còn 30 message | Checkpointer giữ nguyên toàn bộ hội thoại (mục 21), nhưng hỏi lại chuyện của 20 lượt trước thì model không còn thấy |
 | Chỉ tìm theo vector, chưa hybrid | Tên riêng/số hiệu tìm kém hơn nếu có thêm BM25 |
 | Không chống prompt injection | Nội dung Wikivoyage là input không tin cậy |
 | Rate limit đếm trong bộ nhớ | Đúng với một instance; chạy nhiều bản sao phải chuyển sang Redis |
@@ -1035,3 +1037,308 @@ Streamlit Cloud tự deploy lại mỗi lần push lên `main`, không phải l�
 còn hở, đã ghi ở mục 15: bản công khai chạy `app.py` nên **không có rate limit** (cơ chế đó
 nằm trong `api.py`), và bản FastAPI kèm `/metrics` vẫn chỉ chạy local vì muốn deploy nó
 thì cần nền tảng chạy Docker. Chi tiết ở [DEPLOY.md](DEPLOY.md).
+
+---
+
+## 21. Hội thoại bền vững — checkpointer trên PostgreSQL
+
+### Vấn đề: F5 một cái là mất sạch
+
+Trước đây lịch sử chat nằm trong `st.session_state` của Streamlit — tức là **trong RAM của
+tiến trình**. Người dùng bấm F5, đóng tab, hoặc server restart là hội thoại bay hết. Tệ hơn:
+mỗi lượt hỏi phải tự tay ghép lại 4 lượt gần nhất rồi nhét vào prompt để agent hiểu câu nối
+tiếp — logic nhớ nằm lẫn trong code giao diện.
+
+Ví dụ đời thường: đó là kiểu quán cà phê mà nhân viên **ghi order lên giấy nháp**. Xé giấy
+là quên khách. Cái cần là một **cuốn sổ cái** — ghi xuống, ai mở ra cũng đọc lại được.
+
+### Checkpointer là gì
+
+LangGraph có sẵn khái niệm **checkpointer**: sau *mỗi bước* của đồ thị, nó lưu nguyên trạng
+`state` xuống một chỗ nào đó, gắn với một `thread_id`. Lượt sau chỉ cần đưa đúng `thread_id`,
+LangGraph **tự nạp lại toàn bộ lịch sử** — code không phải ghép tay message nào nữa.
+
+`persistence.py` chọn chỗ lưu theo biến môi trường:
+
+| Có `DATABASE_URL` | Không có |
+|---|---|
+| `PostgresSaver` — hội thoại sống qua F5, qua restart server, qua cả đổi máy | `InMemorySaver` — state trong RAM tiến trình, mất khi restart |
+| Sổ cái của quán: hôm sau mở ra vẫn còn | Giấy nháp: xé là hết |
+| Đường chạy thật khi deploy | Đủ để chạy thử và cho CI |
+
+**Vì sao không bắt buộc `DATABASE_URL`?** CI không có database, và bắt buộc nó thì người
+clone repo về không chạy thử được ngay. Thiếu biến thì **tự lui về `InMemorySaver`, không ném
+lỗi**. Đây là một quyết định thiết kế đáng nói khi phỏng vấn: hạ tầng tuỳ chọn thì phải có
+đường lui, không được biến nó thành điều kiện sống còn.
+
+### Vì sao `thread_id` nằm trên URL chứ không trong `session_state`
+
+F5 là Streamlit tạo phiên mới và xoá sạch `session_state`. Nếu `thread_id` chỉ nằm trong đó
+thì ghi xuống Postgres cũng **vô nghĩa**: refresh xong sinh ra thread mới toanh, màn hình vẫn
+trắng — dữ liệu còn nguyên dưới database nhưng không ai biết đường tìm.
+
+```python
+# app.py
+if "thread_id" not in st.session_state:
+    st.session_state.thread_id = st.query_params.get("thread") or str(uuid.uuid4())
+```
+
+Đẩy nó lên query param (`?thread=<uuid>`) thì refresh mở lại đúng hội thoại cũ, và dán URL
+cho người khác họ cũng mở được đúng thread đó. `thread_id` chính là **số bàn** — mất số bàn
+thì cuốn sổ cái dày mấy cũng không tra ra được.
+
+Hệ quả cần biết: nút **"Clear conversation" không xoá gì dưới database** — nó chỉ mở một
+thread mới. Hội thoại cũ vẫn truy lại được nếu còn giữ URL.
+
+### Vì sao lưu hết nhưng vẫn phải cắt cửa sổ lịch sử
+
+Checkpointer giữ **toàn bộ** hội thoại. Ném hết vào model mỗi lượt thì 30 lượt chat là vài
+chục nghìn token cho *mỗi* câu hỏi — tiền và độ trễ đều tăng tuyến tính theo độ dài hội thoại.
+
+`llm_node` cắt bằng `trim_messages`: state dưới database vẫn nguyên, **chỉ phần gửi cho model
+bị giới hạn** (`MAX_HISTORY_MESSAGES`, mặc định 30 message).
+
+```python
+window = trim_messages(
+    state["messages"],
+    max_tokens=MAX_HISTORY_MESSAGES,
+    token_counter=len,        # đếm theo SỐ MESSAGE cho dễ đoán, không theo token
+    strategy="last",
+    start_on="human",
+    allow_partial=False,
+)
+```
+
+`start_on="human"` **không phải chi tiết làm màu**: cắt bừa có thể bỏ lại một `ToolMessage`
+mồ côi không còn `AIMessage` tool_call đi trước, và Gemini **từ chối nguyên request**. Ngưỡng
+30 lớn hơn số message tối đa một lượt sinh ra (`MAX_TOOL_CALLS=8` → khoảng 17), nên lượt đang
+chạy không bao giờ bị đụng tới.
+
+Đây là chỗ phân biệt "biết bật checkpointer" với "hiểu checkpointer": bật xong mà không cắt
+cửa sổ là đã đổi một lỗi (mất trí nhớ) lấy một lỗi khác (hoá đơn phình theo thời gian).
+
+### Ba tham số của connection pool, không cái nào là mặc định cho vui
+
+Database dùng **Neon** (Postgres serverless, gói free 0,5 GB, không cần thẻ, **tự ngủ sau 5
+phút** không ai dùng). Chính cái "tự ngủ" đó quyết định cấu hình pool trong `persistence.py`:
+
+| Tham số | Vì sao |
+|---|---|
+| `min_size=0` | Không ôm connection nào lúc rảnh → Neon mới ngủ được, mà ngủ thì **không đốt giờ compute** của gói free |
+| `check=ConnectionPool.check_connection` | Neon ngủ dậy là connection cũ trong pool đã chết. `check` bắt pool thử trước khi giao ra — thay vì để **request đầu tiên sau khi ngủ** lãnh đủ |
+| `prepare_threshold=0` | Bắt buộc khi đi qua **connection pooler** của Neon: pgbouncer không giữ prepared statement giữa các connection |
+
+Bài học tổng quát: **chọn hạ tầng serverless thì phải chỉnh client theo nó.** Cấu hình pool
+mặc định (giữ sẵn connection, tin rằng connection còn sống) là cấu hình cho database chạy
+24/7 — đem nguyên xi sang Neon là vừa đốt hết giờ compute vừa lỗi ở request đầu.
+
+### Bằng chứng chạy thật
+
+Giao diện in ra chỗ đang lưu bằng `backend_name()` — `"postgres"` hay `"in-memory"`. Cách
+kiểm dứt điểm: hỏi một câu → **F5** → hội thoại vẫn còn; hoặc đếm số thread trong Neon trước
+và sau khi hỏi.
+
+---
+
+## 22. Từ commit đến cloud — CD, Trivy, GHCR và Azure OIDC
+
+Mục 20 kết ở chỗ "bản FastAPI chỉ chạy local vì muốn deploy nó thì cần nền tảng chạy Docker".
+Mục này là phần đã làm được sau đó — và **vẫn không tốn đồng nào**.
+
+### Chuỗi giao hàng
+
+```
+git push
+   │
+   ├── CI ────────► test + lint              (~1 phút)
+   ├── Eval gate ─► gọi LLM thật, chấm điểm  (~4 phút)
+   │
+   └── CI xanh ──► CD
+                    ├── build image Docker
+                    ├── Trivy quét          ← quét TRƯỚC khi đẩy
+                    ├── đẩy lên ghcr.io
+                    └── deploy Azure
+                         └── curl /healthz  ← bắt buộc trả 200
+```
+
+Mỗi mũi tên là một chỗ **có thể chặn**. Đó mới là ý nghĩa của "pipeline": không phải để tự
+động cho nhanh, mà để **không thứ gì hỏng lọt qua được**.
+
+Hai chi tiết của `workflow_run` (cơ chế bắt CD chạy sau khi CI xanh) là bẫy thật, đã ghi
+trong `cd.yml`:
+
+- Nó bắn **cả khi CI đỏ** — nó chỉ báo "CI đã chạy xong". Phải tự lọc bằng
+  `if: ... conclusion == 'success'`.
+- Nó chạy trong ngữ cảnh **nhánh mặc định**, không tự lấy commit đã kích hoạt CI. Không ghi
+  rõ `ref: head_sha` là có ngày **CI xanh ở commit A nhưng image build từ commit B**.
+
+### Trivy — và vì sao thứ tự quan trọng hơn công cụ
+
+Trivy đọc image, liệt kê thư viện bên trong, đối chiếu cơ sở dữ liệu lỗ hổng (CVE).
+
+**Quét TRƯỚC khi đẩy, không phải sau.** Nghe hiển nhiên nhưng rất nhiều pipeline làm ngược.
+Đẩy trước rồi mới quét thì image hỏng **đã nằm trên registry** cho người khác kéo về — giống
+bày hàng lên kệ rồi mới đi kiểm định.
+
+Pipeline quét **hai lần, hai mục đích khác nhau**:
+
+| Bước | Mức | Chặn? | Lý do |
+|---|---|---|---|
+| Báo cáo | `HIGH,CRITICAL` | Không | Gom vào tab Security để còn theo dõi |
+| Chặn | `CRITICAL` + `ignore-unfixed: true` | Có (`exit-code: 1`) | Chỉ chặn ở cái **thật sự sửa được** |
+
+`ignore-unfixed: true` là lựa chọn có chủ ý và là câu hỏi phỏng vấn hay gặp. Chặn theo mọi
+CRITICAL thì CD **đỏ vĩnh viễn**, vì ảnh nền `python:3.12-slim` lúc nào cũng còn vài CVE chưa
+ai vá — báo cũng không làm được gì. Vài hôm là người ta quen mắt và bỏ qua màu đỏ.
+
+> **Bài học tổng quát:** một cái cổng mà người ta học được cách phớt lờ thì **tệ hơn không có
+> cổng**. Cổng phải giữ được uy tín thì mới còn là cổng.
+
+### GHCR và chuyện cái tag
+
+Image đẩy lên **GitHub Container Registry** (`ghcr.io`) chứ không phải Artifact Registry của
+Google: ghcr.io **miễn phí không giới hạn** cho image public, còn Artifact Registry chỉ free
+0,5 GB — image này **đo được 1,45 GB**, vượt ngay từ lần build đầu.
+
+Xác thực dùng `secrets.GITHUB_TOKEN` — GitHub tự cấp cho mỗi lần chạy, **không phải tạo secret
+nào**. Job khai quyền tối thiểu: `packages: write` để đẩy image, `security-events: write` để
+đẩy kết quả quét.
+
+Mỗi lần build gắn **hai** tag:
+
+```
+ghcr.io/hieuxuan1112/travel-ai-agent:latest
+ghcr.io/hieuxuan1112/travel-ai-agent:<sha-của-commit>
+```
+
+`latest` là **con trỏ di động** — hôm nay trỏ image A, mai trỏ image B. Khi production hỏng và
+bạn hỏi "đang chạy code nào?", `latest` không trả lời được. Nó là **biệt danh**; tag SHA là
+**số căn cước**, truy ngược thẳng về đúng một commit.
+
+> **Quy tắc:** `latest` để cho người gõ tay thử nhanh. **Máy móc thì luôn dùng tag bất biến.**
+> Deploy trong repo này dùng tag SHA.
+
+### OIDC keyless — phần đáng nói nhất khi phỏng vấn
+
+Muốn GitHub Actions nói chuyện được với Azure, cách truyền thống là tạo **service principal**
+rồi nhét client secret của nó vào GitHub Secrets. Đó là một **mật khẩu sống nhiều tháng**: lộ
+repo là lộ luôn tài khoản cloud, và gần như không ai đi xoay vòng nó.
+
+Cách đang dùng là **federated credential**:
+
+| | Cách cũ (client secret) | Cách đang dùng (OIDC) |
+|---|---|---|
+| Thứ được lưu | Mật khẩu dài hạn | **Không lưu mật khẩu nào** |
+| Tuổi thọ | Nhiều tháng | Token sống **1 tiếng** |
+| Ví dụ đời thường | Đưa hẳn **chìa khoá nhà** cho người giao hàng | **Xuất trình giấy tờ** mỗi lần vào, bảo vệ kiểm rồi cấp thẻ tạm |
+| Lộ ra thì sao | Mất tài khoản cloud | Token hết hạn là vô dụng |
+
+Cơ chế: GitHub phát một OIDC token, Azure kiểm token đó có đúng đến từ **nhánh `main` của
+đúng repo này** không, rồi đổi lấy credential ngắn hạn. Job phải khai `permissions: id-token:
+write` — **không có dòng đó thì GitHub không phát token**, và đây là lỗi đầu tiên ai cũng dính.
+
+Ba secret trong repo (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`) chỉ là
+**định danh, không phải bí mật** — biết chúng cũng không đăng nhập được.
+
+**Phạm vi quyền:** vai trò `Contributor` nhưng gán ở mức **resource group `rg-travel-agent`**,
+không phải mức subscription. Danh tính đó toàn quyền trong cái hộp đó và **không đụng được gì
+bên ngoài**.
+
+### Azure Container Apps — vì sao không phải AKS, và vì sao $0
+
+| Câu hỏi | Trả lời |
+|---|---|
+| Vì sao không Kubernetes (AKS)? | Một agent hai tool **không cần** Kubernetes. AKS còn không có free tier. Container Apps cho scale-to-zero, ingress HTTPS sẵn, không phải quản node nào |
+| Vì sao Azure chứ không GCP? | **Azure for Students**: $100 credit, **không cần thẻ**. Hết credit thì Microsoft **khoá subscription** chứ không tính tiền. GCP bắt gắn thẻ và **không có hard cap**, chỉ có cảnh báo ngân sách |
+| Vì sao $0/tháng? | `min-replicas 0`: không ai dùng thì **không có replica nào chạy**. Nằm trọn trong free grant (180.000 vCPU-giây + 360.000 GiB-giây + 2 triệu request) |
+
+`min-replicas 0` giống **đèn cảm biến chuyển động**: không ai đi qua thì không tốn điện.
+**Đánh đổi:** request đầu tiên sau khi ngủ mất **~15-20 giây cold start**. Với demo trên CV thì
+chấp nhận được; với sản phẩm thật có người dùng thì đặt `min-replicas 1` và trả tiền cho một
+replica luôn chạy. *Nói được đánh đổi này là dấu hiệu hiểu thật, không phải chép lệnh.*
+
+`GOOGLE_API_KEY` và `DATABASE_URL` đưa vào dạng **Container Apps secret** rồi tham chiếu qua
+`secretref:`, không phải env var trần — giá trị không hiện ra trong `az containerapp show`.
+
+### Idempotent — chạy lại mười lần vẫn ra một trạng thái
+
+Workflow phải chạy được nhiều lần mà không hỏng:
+
+```bash
+# environment: có rồi thì thôi, chưa có thì tạo
+az containerapp env show ... || az containerapp env create ...
+
+# app: lần đầu create, những lần sau chỉ đổi image
+if az containerapp show ...; then
+  az containerapp update --image "$IMAGE:$TAG"
+else
+  az containerapp create ...
+fi
+```
+
+Từ khoá là **idempotent**. Đây là nguyên tắc nền của mọi công cụ hạ tầng — Terraform, Ansible,
+Kubernetes đều dựa vào nó. Một script deploy chỉ chạy đúng ở lần đầu thì không phải script
+deploy, nó là ghi chú cài đặt.
+
+### Năm lần đỏ trước khi xanh
+
+Deploy lần đầu gần như **không bao giờ** xanh ngay. Đây là 5 lần đỏ thật:
+
+| # | Lỗi | Nguyên nhân thật |
+|---|---|---|
+| 1 | `AADSTS700213` | Federated credential còn nguyên chữ giữ chỗ `{Organization ID}` / `{Repository ID}` vì hai ô đó bị bỏ trống |
+| 2 | `RequestDisallowedByAzure`, target `workspace-...` | Log Analytics workspace bị chặn ở `southeastasia` |
+| 3 | Y hệt, vẫn target `workspace-...` | Chặn cả ở `eastus` → bỏ hẳn workspace bằng `--logs-destination none` |
+| 4 | `RequestDisallowedByAzure`, target `travel-agent-env` | Giờ mới **thật sự** là region → cho workflow thử nhiều region trong một lần chạy |
+| 5 | `InternalServerError` | Gộp `create` + `--secrets` một lệnh → tách thành ba lệnh nhỏ |
+
+Region cuối cùng được chấp nhận: **`japaneast`**, sau khi bị từ chối 8 region trước đó.
+
+**Ba bài học đáng nhớ hơn cả kỹ thuật:**
+
+1. **Đọc kỹ `Target:` trong thông báo lỗi.** Hai lần liền lỗi chỉ đích danh `workspace-...`
+   chứ không phải environment, nhưng vẫn đi đổi region — sai hướng, tốn hai lần chạy.
+2. **Đừng đoán thứ không tra được.** Danh sách region cho phép không công bố ở đâu cả. Cho
+   workflow thử lần lượt trong *một* lần chạy rẻ hơn nhiều so với đoán mỗi lần một push: mỗi
+   lần bị từ chối chỉ mất ~8 giây, còn mỗi lần push mất ~10 phút.
+3. **Lệnh to thì lỗi mờ.** `az containerapp create` ôm cả image, ingress, scaling, resource và
+   hai secret trả về đúng một dòng `InternalServerError`. Tách thành ba lệnh nhỏ thì lỗi tự
+   khai ra nó ở đâu.
+
+### Bằng chứng chạy thật
+
+```
+https://travel-agent-api.nicewave-bb4d94a1.japaneast.azurecontainerapps.io/docs
+```
+
+`/healthz` trả `{"status":"ok",...}`; `/chat` trả 200 và agent gọi đúng `weather_forecast`,
+trả lời trong **3,5 giây**. Bước cuối của job `deploy` gọi `/healthz` và thử lại 6 lần cách
+nhau 15 giây — cold start có thể lâu, nhưng **không trả 200 thì CD đỏ**.
+
+### Trả lời phỏng vấn — 8 câu về persistence và deploy
+
+1. *Agent của bạn nhớ hội thoại thế nào?* → LangGraph **checkpointer** lưu `state` sau mỗi
+   bước, gắn với `thread_id`. Có `DATABASE_URL` thì `PostgresSaver` (Neon), không có thì lui
+   về `InMemorySaver`. → Mục 21.
+2. *Lưu hết lịch sử thì prompt phình ra chứ?* → Đúng, nên vẫn phải cắt: `trim_messages` giới
+   hạn **phần gửi cho model** (30 message), state dưới database còn nguyên. `start_on="human"`
+   để không bỏ lại `ToolMessage` mồ côi khiến Gemini từ chối request.
+3. *Vì sao `thread_id` nằm trên URL?* → F5 là Streamlit xoá `session_state`. Nếu id chỉ nằm ở
+   đó thì ghi xuống Postgres cũng vô nghĩa — refresh xong sinh thread mới, không ai tra ra
+   hội thoại cũ.
+4. *Vì sao quét Trivy trước khi đẩy?* → Đẩy trước rồi quét thì image hỏng đã nằm trên
+   registry cho người khác kéo về. Và chỉ **chặn** ở CRITICAL đã có bản vá — cổng luôn đỏ là
+   cổng bị nhờn.
+5. *Vì sao deploy bằng tag SHA chứ không `latest`?* → `latest` là con trỏ di động, không trả
+   lời được câu "production đang chạy code nào". Tag SHA truy ngược về đúng một commit.
+6. *OIDC keyless là gì, hơn gì client secret?* → GitHub phát token sống 1 tiếng, Azure kiểm
+   đúng repo/nhánh rồi đổi lấy credential ngắn hạn. **Không có mật khẩu dài hạn nào được
+   lưu.** Cần `permissions: id-token: write` thì GitHub mới phát token.
+7. *Vì sao Container Apps chứ không Kubernetes?* → Một agent hai tool không cần Kubernetes;
+   AKS không có free tier. Container Apps cho scale-to-zero và ingress HTTPS sẵn.
+8. *Deploy của bạn tốn bao nhiêu?* → **$0**, nhờ `min-replicas 0` + Azure for Students (hard
+   cap, không cần thẻ). Đánh đổi là cold start **~15-20 giây** ở request đầu; sản phẩm thật
+   thì đặt `min-replicas 1`.
+
+Chi tiết đầy đủ: [DEPLOY.md](DEPLOY.md) mục 8-10 và
+[hoc/HOC_CICD_CLOUD.md](hoc/HOC_CICD_CLOUD.md).
