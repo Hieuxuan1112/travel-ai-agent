@@ -9,7 +9,7 @@ Phiên trước làm gì, còn gì dở. Cập nhật 2026-08-30.
 | Streamlit | https://cornwall-travel-agent.streamlit.app |
 | API trên Azure | https://travel-agent-api.nicewave-bb4d94a1.japaneast.azurecontainerapps.io/docs |
 | Repo | github.com/Hieuxuan1112/travel-ai-agent |
-| Test | 56 passed |
+| Test | 81 passed |
 
 Phiên trước đã thêm: checkpointer PostgreSQL (Neon), CD pipeline (Trivy → GHCR),
 deploy Azure Container Apps bằng OIDC keyless. Tất cả đã kiểm chứng chạy thật.

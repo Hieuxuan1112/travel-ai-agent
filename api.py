@@ -73,6 +73,28 @@ app.add_middleware(
 # ===========================================================================
 
 RATE_LIMIT_PER_HOUR = int(os.environ.get("RATE_LIMIT_PER_HOUR", "30"))
+
+# CONG TAC NGAT. Rate limit chi lam CHAM ke lam dung; khi dang bi lam dung that
+# hoac nha cung cap doi gia, ta can tat HAN tinh nang AI ngay - ma khong phai
+# build lai image, khong phai phat hanh ban moi. Doi bien moi truong nay roi
+# khoi dong lai la xong (tren Container Apps la mot revision moi, ~1 phut).
+#   AI_ENABLED=0  -> /chat va /chat/stream tra 503, /healthz VAN xanh
+AI_ENABLED = os.environ.get("AI_ENABLED", "1").strip().lower() not in {"0", "false", "no"}
+
+
+def require_ai_enabled() -> None:
+    """Dependency: chan truoc khi handler chay, giong enforce_rate_limit.
+
+    503 chu khong phai 500: day la tu choi CO CHU Y va tam thoi. 503 con bao cho
+    trinh duyet/CDN biet dung cache lai cau tra loi nay.
+    """
+    if not AI_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail="The AI feature is temporarily disabled by the operator. "
+                   "The rest of the service is unaffected.",
+            headers={"Retry-After": "3600"},
+        )
 _RATE_WINDOW_SECONDS = 3600
 _hits: dict[str, deque[float]] = defaultdict(deque)
 
@@ -169,7 +191,7 @@ def prometheus_metrics() -> PlainTextResponse:
     "/chat",
     response_model=ChatResponse,
     tags=["agent"],
-    dependencies=[Depends(enforce_rate_limit)],
+    dependencies=[Depends(require_ai_enabled), Depends(enforce_rate_limit)],
 )
 def chat(request: ChatRequest) -> ChatResponse:
     """Hoi mot cau, doi agent lam xong, tra ve mot cuc JSON.
@@ -267,7 +289,11 @@ def agent_events(question: str) -> Iterator[str]:
     })
 
 
-@app.get("/chat/stream", tags=["agent"], dependencies=[Depends(enforce_rate_limit)])
+@app.get(
+    "/chat/stream",
+    tags=["agent"],
+    dependencies=[Depends(require_ai_enabled), Depends(enforce_rate_limit)],
+)
 def chat_stream(q: str = Query(min_length=3, max_length=500, description="Cau hoi")):
     """Hoi mot cau, nhan tung su kien ngay khi agent lam - khong phai cho het 15 giay.
 

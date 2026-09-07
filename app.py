@@ -3,8 +3,10 @@
 Chay:  venv\\Scripts\\streamlit.exe run app.py
 """
 
+import os
 import time
 import uuid
+from collections import deque
 from pathlib import Path
 
 import streamlit as st
@@ -13,6 +15,56 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 st.set_page_config(page_title="Cornwall Travel Agent", page_icon="🏖️", layout="centered")
 
 PROJECT_DIR = Path(__file__).parent
+
+# ---------------------------------------------------------------------------
+# CONG TAC NGAT + NGAN SACH, cho ban CONG KHAI.
+#
+# api.py da co rate limit theo IP, nhung ban chay cong khai lai la app.py -
+# tuc la cho so ho that su nam o day. Streamlit khong dua IP client ra mot cach
+# on dinh giua cac phien ban, nen thay vi gia vo chan theo IP, ta chan hai lop
+# thanh that:
+#   - ngan sach TOAN CUC theo gio: bao ve dung thu can bao ve (hoa don API key)
+#   - han muc theo PHIEN: giu cong bang giua nhung nguoi dang mo app cung luc
+# Nguoi co the mo tab moi de lach han muc phien, nhung KHONG lach duoc ngan
+# sach toan cuc - do la lop chan thuc su.
+# ---------------------------------------------------------------------------
+AI_ENABLED = os.environ.get("AI_ENABLED", "1").strip().lower() not in {"0", "false", "no"}
+GLOBAL_BUDGET_PER_HOUR = int(os.environ.get("GLOBAL_BUDGET_PER_HOUR", "200"))
+SESSION_LIMIT_PER_HOUR = int(os.environ.get("SESSION_LIMIT_PER_HOUR", "20"))
+_WINDOW_SECONDS = 3600
+
+
+@st.cache_resource
+def _global_hits() -> deque:
+    """Mot deque dung chung ca tien trinh (cache_resource = mot ban cho moi server)."""
+    return deque()
+
+
+def _within_window(hits: deque, now: float) -> deque:
+    while hits and now - hits[0] > _WINDOW_SECONDS:
+        hits.popleft()
+    return hits
+
+
+def check_budget() -> str | None:
+    """Tra ve thong bao tu choi, hoac None neu duoc phep hoi."""
+    if not AI_ENABLED:
+        return ("Tinh nang AI dang duoc tam tat. Repo la public, ban co the "
+                "clone ve chay bang API key cua minh.")
+    now = time.time()
+    if len(_within_window(_global_hits(), now)) >= GLOBAL_BUDGET_PER_HOUR:
+        return (f"Demo da dung het ngan sach {GLOBAL_BUDGET_PER_HOUR} cau/gio. "
+                "Thu lai sau, hoac clone repo ve chay bang key cua minh.")
+    session = _within_window(st.session_state.setdefault("hits", deque()), now)
+    if len(session) >= SESSION_LIMIT_PER_HOUR:
+        return f"Ban da hoi {SESSION_LIMIT_PER_HOUR} cau trong mot gio. Thu lai sau."
+    return None
+
+
+def record_question() -> None:
+    now = time.time()
+    _global_hits().append(now)
+    st.session_state.setdefault("hits", deque()).append(now)
 
 
 @st.cache_resource(show_spinner="Building the travel knowledge base (first run only) ...")
@@ -41,8 +93,24 @@ agent, store_backend = load_stateful_agent()
 # thread_id nam tren URL chu khong chi trong session_state: F5 la Streamlit tao
 # phien moi va xoa sach session_state, nhung query param thi con -> mo lai dung
 # hoi thoai cu. Dan URL cho nguoi khac cung mo duoc dung thread do.
+def _valid_thread(raw: str | None) -> str | None:
+    """Chi nhan UUID dung dinh dang.
+
+    thread_id di THANG tu URL vao khoa doc/ghi cua checkpointer. Khong kiem tra
+    thi ai cung dat duoc khoa tuy y (?thread=admin, ?thread=1) - vua tao rac
+    trong database, vua bien khong gian khoa tu 122 bit ngau nhien thanh thu
+    doan duoc. Ep dung UUID giu cho khoa luon o muc khong the do tim.
+    """
+    if not raw:
+        return None
+    try:
+        return str(uuid.UUID(raw))
+    except ValueError:
+        return None
+
+
 if "thread_id" not in st.session_state:
-    st.session_state.thread_id = st.query_params.get("thread") or str(uuid.uuid4())
+    st.session_state.thread_id = _valid_thread(st.query_params.get("thread")) or str(uuid.uuid4())
 if st.query_params.get("thread") != st.session_state.thread_id:
     st.query_params["thread"] = st.session_state.thread_id
 
@@ -102,6 +170,11 @@ for msg in st.session_state.messages:
         st.markdown(msg["content"])
 
 if prompt := st.chat_input("e.g. Suggest two Cornwall beach towns with nice weather"):
+    refusal = check_budget()
+    if refusal:
+        st.warning(refusal)
+        st.stop()
+    record_question()
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)

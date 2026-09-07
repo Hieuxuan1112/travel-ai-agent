@@ -63,7 +63,7 @@ tiêu: (1) chạy thật, kiểm chứng được; (2) **user giải thích đư
 ## Lệnh hay dùng
 
 ```bash
-venv\Scripts\python.exe -m pytest -q              # 56 test
+venv\Scripts\python.exe -m pytest -q              # 81 test
 venv\Scripts\python.exe -m evals.eval_agent       # eval, ghi evals/results.md
 venv\Scripts\streamlit.exe run app.py             # UI
 venv\Scripts\python.exe -m uvicorn api:app --reload
