@@ -19,6 +19,8 @@ Tài liệu để **học kiến thức nền**, tách khỏi tài liệu mô t�
 | 5 | [HOC_FASTAPI_SSE.md](HOC_FASTAPI_SSE.md) | HTTP căn bản, FastAPI, pydantic, Server-Sent Events | đã làm |
 | 6 | [HOC_DOCKER.md](HOC_DOCKER.md) | Image/container, multi-stage, non-root, healthcheck, compose, volume | đã làm |
 | 7 | [HOC_PROMETHEUS.md](HOC_PROMETHEUS.md) | Counter/Gauge/Histogram, p95, PromQL, Grafana provisioning | đã làm |
+| 12 | [HOC_BAO_MAT_AI_APP.md](HOC_BAO_MAT_AI_APP.md) | Bốn lỗ hổng kinh điển của app AI: rate limit, key ở frontend, row-level security, **công tắc ngắt** — dự án dính cái nào và vá thế nào | ⭐ hay bị hỏi |
+| 11 | [HOC_GIT_GITHUB.md](HOC_GIT_GITHUB.md) | Git vs GitHub, 3 vùng, nhánh, **Pull Request**, merge conflict, merge vs rebase, lỡ commit secret, 4 lỗi đã gặp thật trong repo này | ⭐ đi làm là dùng |
 | 10 | [HOC_CICD_CLOUD.md](HOC_CICD_CLOUD.md) | CI vs CD, Trivy, GHCR, tag SHA, **OIDC keyless**, Azure Container Apps, scale-to-zero, 5 lần deploy đỏ và cách lần ra lỗi | ⭐ mới, chưa vững |
 
 Mỗi file đều có phần **tự kiểm tra** với đáp án giấu trong `<details>` — trả lời trước rồi

@@ -46,7 +46,7 @@ Bảng quan trọng nhất tài liệu. Cột phải chỉ bạn tới mục c�
 | Han-Nom corpus (luận văn) | 55K bài → 10K mẫu, 98,2% | đo chất lượng nhãn, thiết kế cổng xác thực | P1 |
 | Multi-tool AI Agent | 100% tool-selection (8 case eval) | ReAct, tool calling, RAG, eval, p95 | P1, P2, P3 |
 | Prometheus, cost/query | $0,0007/câu | token, tokenizer, đo lường | P6 |
-| Docker, FastAPI, CI | 56 test | đã vững — chỉ cần nói rõ | [MENTOR.md](MENTOR.md) |
+| Docker, FastAPI, CI | 81 test | đã vững — chỉ cần nói rõ | [MENTOR.md](MENTOR.md) |
 | Lưu hội thoại bền | checkpointer trên PostgreSQL | thread state, trim context | [HOC_LANGGRAPH.md](HOC_LANGGRAPH.md) |
 | CD: Trivy, GHCR | quét trước khi đẩy, tag theo SHA | chuỗi cung ứng phần mềm | [HOC_CICD_CLOUD.md](HOC_CICD_CLOUD.md) |
 | Azure Container Apps | keyless OIDC, scale-to-zero, $0 | federated credential, quyền tối thiểu | [HOC_CICD_CLOUD.md](HOC_CICD_CLOUD.md) |
