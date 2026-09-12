@@ -39,6 +39,8 @@ DATASET = [
      {"search_travel_info", "weather_forecast"}),
     ("Which Cornwall coastal town should I visit today based on the weather?",
      {"search_travel_info", "weather_forecast"}),
+    ("Suggest two Cornwall beach towns colder than 0 degrees Celsius right now",
+     {"search_travel_info", "weather_forecast", "rank_town_candidates"}),
 ]
 
 # Nguong chan hoi quy. Dat THAP HON ket qua hien tai (100% / 4.4) mot khoang de
