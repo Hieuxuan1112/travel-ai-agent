@@ -269,7 +269,12 @@ def test_rank_town_candidates_tool_tra_ve_dung_cau_truc(monkeypatch):
 
     assert result["relaxed"] is False
     assert {c["town"] for c in result["ranked"]} == {"St Ives", "Newquay"}
-    assert set(result["ranked"][0]) == {"town", "relevance", "weather_fit", "composite"}
+    assert set(result["ranked"][0]) == {
+        "town", "relevance", "weather_fit", "composite", "weather",
+    }
+    # Nguyen du lieu thoi tiet phai co that de model trich so, khong chi 3 diem so.
+    ranked_by_town = {c["town"]: c for c in result["ranked"]}
+    assert ranked_by_town["St Ives"]["weather"] == fake_weather["St Ives"]
 
 
 def test_rank_town_candidates_tool_co_trong_danh_sach_tool():

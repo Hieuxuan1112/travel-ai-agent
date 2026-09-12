@@ -369,6 +369,12 @@ def _score_candidates(
             "relevance": round(relevance, 3),
             "weather_fit": round(weather_fit, 3),
             "composite": round(composite, 3),
+            # Kem nguyen du lieu thoi tiet: SYSTEM_PROMPT bat model trich so
+            # that (nhiet do, gio, mua) khi bao cao - thieu no o day, model se
+            # tu goi lai weather_forecast rieng cho tung town de lay con so,
+            # nhan doi so tool call va co the cham tran MAX_TOOL_CALLS truoc
+            # khi kip tra loi (da thay that khi chay main_05_multi_agent.py).
+            "weather": weather,
         })
 
     meeting_threshold = [c for c in scored if c["weather_fit"] >= min_weather_fit]
