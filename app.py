@@ -79,16 +79,29 @@ def load_agent():
 lab = load_agent()
 
 
+AGENT_MODES = ["ReAct (single agent)", "Multi-agent (planner + executor)"]
+
+
 @st.cache_resource(show_spinner="Connecting to the conversation store ...")
-def load_stateful_agent():
-    """Agent co checkpointer. Cache_resource -> ca server dung chung MOT connection
-    pool, khong phai moi phien mo mot pool rieng ra Neon."""
+def load_stateful_agents():
+    """Hai agent, DUNG CHUNG mot checkpointer/connection pool.
+
+    Multi-agent tai them main_05_multi_agent - file do tu import main_02_02
+    va boc lai chinh graph ReAct lam executor (subgraph), nen khong ton them
+    vector store hay ket noi rieng nao ca, chi them mot compiled graph nua.
+    """
+    import main_05_multi_agent as multi_agent
     import persistence
 
-    return lab.build_agent(persistence.get_checkpointer()), persistence.backend_name()
+    checkpointer = persistence.get_checkpointer()
+    agents = {
+        AGENT_MODES[0]: lab.build_agent(checkpointer),
+        AGENT_MODES[1]: multi_agent.build_supervised_agent(checkpointer),
+    }
+    return agents, persistence.backend_name()
 
 
-agent, store_backend = load_stateful_agent()
+agents, store_backend = load_stateful_agents()
 
 # thread_id nam tren URL chu khong chi trong session_state: F5 la Streamlit tao
 # phien moi va xoa sach session_state, nhung query param thi con -> mo lai dung
@@ -137,6 +150,15 @@ def restore_messages():
 
 with st.sidebar:
     st.subheader("Agent configuration")
+    agent_mode = st.radio(
+        "Agent architecture",
+        AGENT_MODES,
+        help="ReAct: mot agent tu suy luan roi hanh dong, khong tach buoc. "
+             "Multi-agent: mot planner quyet dinh chien luoc (co can xep hang "
+             "nhieu town theo thoi tiet khong, bao nhieu, tieu chi gi) TRUOC, "
+             "roi giao cho executor - chinh la agent ReAct ben trai, dung "
+             "nguyen - thuc thi theo dung ke hoach do.",
+    )
     st.metric("LLM", lab.CHAT_MODEL)
     st.metric("Weather source", "Open-Meteo (live)" if lab.WEATHER_MODE == "real" else "mock")
     st.metric("Conversation store", store_backend)
@@ -156,10 +178,24 @@ with st.sidebar:
         st.query_params["thread"] = st.session_state.thread_id
         st.rerun()
 
+# Doi kien truc giua chung mot hoi thoai la truong hop la (2 graph khac shape
+# dung chung 1 thread_id) - de an toan, coi nhu bam "Clear conversation": mo
+# thread moi thay vi co gang tron lich su cua 2 kien truc khac nhau.
+if "agent_mode" not in st.session_state:
+    st.session_state.agent_mode = agent_mode
+elif st.session_state.agent_mode != agent_mode:
+    st.session_state.agent_mode = agent_mode
+    st.session_state.messages = []
+    st.session_state.thread_id = str(uuid.uuid4())
+    st.query_params["thread"] = st.session_state.thread_id
+    st.rerun()
+
+agent = agents[agent_mode]
+
 st.title("🏖️ Cornwall Travel Agent")
 st.caption(
-    "LangGraph ReAct agent · tool 1: semantic search over Wikivoyage · "
-    "tool 2: live weather for any city"
+    "LangGraph agent (choose ReAct or Multi-agent in the sidebar) · "
+    "tools: semantic search over Wikivoyage, live weather, weighted town ranking"
 )
 
 if "messages" not in st.session_state:
@@ -195,6 +231,9 @@ if prompt := st.chat_input("e.g. Suggest two Cornwall beach towns with nice weat
                 stream_mode="updates",
             ):
                 for _node_name, payload in update.items():
+                    if _node_name == "planner" and payload.get("plan"):
+                        plan = payload["plan"]
+                        st.markdown(f"🧭 **planner decision** · `{plan}`")
                     for message in payload.get("messages", []):
                         if isinstance(message, AIMessage) and message.tool_calls:
                             for call in message.tool_calls:
