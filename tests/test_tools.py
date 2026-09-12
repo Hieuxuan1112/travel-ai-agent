@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 import requests
+from langchain_core.messages import AIMessage, ToolMessage
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ.setdefault("GOOGLE_API_KEY", "test-key-not-used")
@@ -152,6 +153,39 @@ def test_both_tools_are_registered_with_descriptions():
     assert names == {"search_travel_info", "weather_forecast", "rank_town_candidates"}
     for tool in lab.TOOLS:
         assert len(tool.description) > 30
+
+
+def test_tools_node_reports_bad_args_instead_of_crashing():
+    """Sai schema (vd LLM truyen sai kieu) phai tra ve ToolMessage bao loi cho
+    LLM tu sua o luot sau, khong duoc nem exception lam sap ca graph."""
+    node = lab.ToolsExecutionNode(lab.TOOLS)
+    bad_call = AIMessage(content="", tool_calls=[
+        {"name": "weather_forecast", "args": {"town": ["not", "a", "string"]}, "id": "c1"}
+    ])
+
+    result = node({"messages": [bad_call]})
+
+    assert len(result["messages"]) == 1
+    tool_message = result["messages"][0]
+    assert isinstance(tool_message, ToolMessage)
+    assert tool_message.tool_call_id == "c1"
+    assert "invalid arguments" in tool_message.content.lower()
+    assert "weather_forecast" in tool_message.content
+
+
+def test_tools_node_still_works_normally_for_valid_args(fake_open_meteo, monkeypatch):
+    """Duong binh thuong khong duoc anh huong boi try/except moi them."""
+    monkeypatch.setattr(lab, "WEATHER_MODE", "real")
+    node = lab.ToolsExecutionNode(lab.TOOLS)
+    good_call = AIMessage(content="", tool_calls=[
+        {"name": "weather_forecast", "args": {"town": "Falmouth"}, "id": "c1"}
+    ])
+
+    result = node({"messages": [good_call]})
+
+    tool_message = result["messages"][0]
+    assert "Falmouth" in tool_message.content
+    assert "invalid arguments" not in tool_message.content.lower()
 
 
 def test_temp_score_trong_khoang_la_1():
