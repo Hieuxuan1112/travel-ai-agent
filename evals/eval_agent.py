@@ -31,16 +31,23 @@ DATASET = [
     ("Tell me about surfing in Cornwall", {"search_travel_info"}),
     ("What can I do in St Ives?", {"search_travel_info"}),
     ("Suggest three towns with a nice beach in Cornwall", {"search_travel_info"}),
+    # Mot town duy nhat: van goi weather_forecast truc tiep, khong qua ranking.
     ("What is the weather in Falmouth, Cornwall right now?", {"weather_forecast"}),
-    ("Compare the weather in Newquay and Penzance", {"weather_forecast"}),
+    # Tu 2 town tro len: SYSTEM_PROMPT bao goi rank_town_candidates thay vi tu
+    # goi weather_forecast rieng le - tool nay tu lay thoi tiet BEN TRONG than
+    # ham (xem main_02_02.rank_town_candidates), nen weather_forecast KHONG con
+    # xuat hien rieng trong lich su tool_calls cua LLM nua. Cap nhat lai bo doi
+    # chieu nay sau khi doi hanh vi o rank_town_candidates (PR #6) - truoc do
+    # cac case nay ky vong "weather_forecast" va lam gate that bai (44%).
+    ("Compare the weather in Newquay and Penzance", {"rank_town_candidates"}),
     ("Suggest two Cornwall beach towns with nice weather",
-     {"search_travel_info", "weather_forecast"}),
+     {"search_travel_info", "rank_town_candidates"}),
     ("I want a surfing town in Cornwall where it is not raining today",
-     {"search_travel_info", "weather_forecast"}),
+     {"search_travel_info", "rank_town_candidates"}),
     ("Which Cornwall coastal town should I visit today based on the weather?",
-     {"search_travel_info", "weather_forecast"}),
+     {"search_travel_info", "rank_town_candidates"}),
     ("Suggest two Cornwall beach towns colder than 0 degrees Celsius right now",
-     {"search_travel_info", "weather_forecast", "rank_town_candidates"}),
+     {"search_travel_info", "rank_town_candidates"}),
 ]
 
 # Nguong chan hoi quy. Dat THAP HON ket qua hien tai (100% / 4.4) mot khoang de
