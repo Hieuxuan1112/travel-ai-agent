@@ -14,3 +14,4 @@ __pycache__/
 results.json
 docs/pdf/
 .worktrees/
+evals/eval_history.db

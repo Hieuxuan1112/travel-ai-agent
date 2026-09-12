@@ -86,6 +86,54 @@ def test_mot_luot_hoi_dap_binh_thuong_khong_bi_cat(monkeypatch):
     assert fake.seen[1:] == turn  # nguyen ven, khong mat message nao
 
 
+def test_llm_node_bo_qua_state_khong_co_plan(monkeypatch):
+    """Khong co khoa 'plan' trong state (truong hop main_02_02.py/main_03_01.py
+    dung binh thuong) thi system prompt khong duoc them gi ca."""
+    fake = _FakeLLM()
+    monkeypatch.setattr(lab, "llm_with_tools", fake)
+
+    lab.llm_node({"messages": [HumanMessage(content="hello")]})
+
+    assert fake.seen[0].content == lab.SYSTEM_PROMPT
+
+
+def test_llm_node_them_ghi_chu_khi_planner_quyet_dinh_can_xep_hang(monkeypatch):
+    """planner_node (main_05_multi_agent.py) ghi 'plan' vao state - llm_node phai
+    doc duoc va them huong dan cu the vao system prompt cho luot nay."""
+    fake = _FakeLLM()
+    monkeypatch.setattr(lab, "llm_with_tools", fake)
+
+    state = {
+        "messages": [HumanMessage(content="pick 2 warm towns")],
+        "plan": {
+            "needs_town_ranking": True,
+            "top_n": 2,
+            "min_temp_c": 18.0,
+            "max_temp_c": 28.0,
+        },
+    }
+    lab.llm_node(state)
+
+    prompt = fake.seen[0].content
+    assert lab.SYSTEM_PROMPT in prompt
+    assert "2" in prompt
+    assert "18.0" in prompt and "28.0" in prompt
+    assert "rank_town_candidates" in prompt
+
+
+def test_llm_node_bo_qua_plan_khi_khong_can_xep_hang(monkeypatch):
+    fake = _FakeLLM()
+    monkeypatch.setattr(lab, "llm_with_tools", fake)
+
+    state = {
+        "messages": [HumanMessage(content="what can I do in St Ives?")],
+        "plan": {"needs_town_ranking": False, "rationale": "single-town search"},
+    }
+    lab.llm_node(state)
+
+    assert fake.seen[0].content == lab.SYSTEM_PROMPT
+
+
 def test_hoi_thoai_dai_bi_cat_nhung_van_bat_dau_bang_luot_nguoi_dung(monkeypatch):
     fake = _FakeLLM()
     monkeypatch.setattr(lab, "llm_with_tools", fake)
