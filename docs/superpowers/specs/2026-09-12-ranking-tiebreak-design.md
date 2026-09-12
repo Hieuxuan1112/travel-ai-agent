@@ -28,13 +28,10 @@ thuần, không gọi LLM — unit-test được không cần network/API key.
 ### Chữ ký tool
 
 ```python
-class TownCandidate(TypedDict):
-    town: str
-    weather: dict  # nguyen dict ma weather_forecast tra ve
-
 @tool
 def rank_town_candidates(
-    candidates: list[TownCandidate],
+    towns: list[str],
+    country: str = "",
     min_temp_c: float = 15.0,
     max_temp_c: float = 25.0,
     min_weather_fit: float = 0.5,
@@ -45,6 +42,17 @@ def rank_town_candidates(
 
 `min_temp_c`/`max_temp_c` cho LLM truyền vào khi user nói rõ mong muốn (vd
 "dưới 15 độ"); không nói gì thì dùng mặc định 15–25°C.
+
+**Đổi so với bản thiết kế ban đầu** (phát hiện khi chạy thật, không phải đoán
+trước): thiết kế đầu tiên nhận `candidates: list[{town, weather}]` — tức LLM
+phải tự relay lại nguyên dict thời tiết đã nhận từ `weather_forecast` ở lượt
+gọi trước. Chạy `evals/eval_agent.py` thật thì thấy Gemini thường xuyên KHÔNG
+relay đúng (vd chỉ gửi `"weather": "overcast"` thay vì cả dict), gây lỗi
+validate Pydantic ở mọi lần thử kể cả sau retry (temperature=0 nên lỗi lặp lại
+y hệt). Sửa bằng cách để `rank_town_candidates` tự gọi `weather_forecast` bên
+trong cho từng town trong `towns` — bỏ hẳn việc bắt LLM chuyển tiếp object
+lồng nhau giữa các lượt gọi tool, loại bỏ nguồn lỗi thay vì cố retry quanh nó.
+Công thức điểm (bên dưới) không đổi, chỉ đổi cách candidate lấy được `weather`.
 
 ### Công thức điểm
 
@@ -91,9 +99,9 @@ def rank_town_candidates(
 ### Thay đổi kèm theo
 
 - `SYSTEM_PROMPT`: thêm một câu hướng dẫn — khi cần so sánh/chọn giữa ≥2 town
-  theo thời tiết, gọi `weather_forecast` cho từng candidate rồi gọi
-  `rank_town_candidates` trước khi trả lời; nếu `relaxed=true` phải nói rõ cho
-  user là đã nới điều kiện.
+  theo thời tiết, gọi thẳng `rank_town_candidates` với tên các town (tool tự
+  lấy thời tiết, không cần gọi `weather_forecast` riêng trước); nếu
+  `relaxed=true` phải nói rõ cho user là đã nới điều kiện.
 - `mcp_server.py`: thêm wrapper cho tool mới, cùng kiểu với 2 tool hiện có, để
   MCP client cũng gọi được (nhất quán, không để MCP surface bị thiếu 1 tool).
 - KHÔNG đổi cấu trúc graph (`llm_node`, `tools_execution_node`,
