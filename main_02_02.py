@@ -19,7 +19,7 @@ import random
 import sys
 import time
 from collections.abc import Sequence
-from typing import Annotated, Literal, TypedDict
+from typing import Annotated, Literal, NotRequired, TypedDict
 
 import requests
 from dotenv import load_dotenv
@@ -433,6 +433,11 @@ llm_with_tools = llm_model.bind_tools(TOOLS)
 
 class AgentState(TypedDict):
     messages: Annotated[Sequence[BaseMessage], operator.add]
+    # Tuy chon, khong dung boi travel_info_agent/main_03_01.py o day. Khai bao
+    # san de khi graph nay duoc ghep lam SUBGRAPH (main_05_multi_agent.py), kenh
+    # "plan" cua graph cha di qua duoc - LangGraph loc theo dung schema khai bao,
+    # thieu dong nay thi planner ghi "plan" nhung executor khong bao gio thay.
+    plan: NotRequired[dict]
 
 
 # ===========================================================================
@@ -519,6 +524,23 @@ answering the user's travel question."""
 MAX_HISTORY_MESSAGES = int(os.environ.get("MAX_HISTORY_MESSAGES", "30"))
 
 
+def _plan_note(plan: dict | None) -> str:
+    """Doc quyet dinh cua planner_node (main_05_multi_agent.py) neu co, tra ve
+    doan them vao system prompt cho luot nay. State khong co khoa 'plan' (truong
+    hop dung main_02_02.py/main_03_01.py binh thuong, khong qua supervisor) hoac
+    planner quyet dinh khong can xep hang -> tra ve chuoi rong, khong doi gi ca.
+    """
+    if not plan or not plan.get("needs_town_ranking"):
+        return ""
+    temp_range = ""
+    if plan.get("min_temp_c") is not None and plan.get("max_temp_c") is not None:
+        temp_range = f", target temperature {plan['min_temp_c']}-{plan['max_temp_c']}C"
+    return (
+        f"\n\nPlanner note for this turn: rank {plan.get('top_n', 2)} candidate "
+        f"town(s){temp_range}. Call rank_town_candidates with these parameters."
+    )
+
+
 def llm_node(state: AgentState):
     """LLM node that decides whether to call a tool or answer."""
     # start_on="human": cat theo LUOT, khong cat giua chung. Cat bua co the bo
@@ -536,7 +558,8 @@ def llm_node(state: AgentState):
     )
     # Sach append system message vao state moi luot (bi lap lai). O day ta ghep
     # SystemMessage len DAU danh sach tam thoi -> khong lam ban state.
-    current_messages = [SystemMessage(content=SYSTEM_PROMPT), *window]
+    prompt = SYSTEM_PROMPT + _plan_note(state.get("plan") if isinstance(state, dict) else None)
+    current_messages = [SystemMessage(content=prompt), *window]
     response_message = llm_with_tools.invoke(current_messages)
     # Dem token + tien ngay tai day: moi vong ReAct la mot lan goi model, nen
     # mot cau hoi 3 tool se tinh tien 4 lan chu khong phai 1.
