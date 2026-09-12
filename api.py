@@ -20,7 +20,7 @@ from collections import defaultdict, deque
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
@@ -80,6 +80,32 @@ RATE_LIMIT_PER_HOUR = int(os.environ.get("RATE_LIMIT_PER_HOUR", "30"))
 # khoi dong lai la xong (tren Container Apps la mot revision moi, ~1 phut).
 #   AI_ENABLED=0  -> /chat va /chat/stream tra 503, /healthz VAN xanh
 AI_ENABLED = os.environ.get("AI_ENABLED", "1").strip().lower() not in {"0", "false", "no"}
+
+
+# ===========================================================================
+# 1c. API KEY (tuy chon)
+#
+# Khong dat API_KEYS -> API cong khai nhu truoc gio (ban dang chay tren Azure
+# khong dat bien nay, nen hanh vi khong doi - chi la kha nang moi, khong phai
+# breaking change). Dat bien -> /chat va /chat/stream bat buoc header
+# X-API-Key hop le. /healthz va /metrics KHONG bi chan: health check cua
+# container orchestrator khong the tu mang theo key, va /metrics cong khai la
+# quyet dinh rieng da ghi trong HANDOFF.md, khong doi trong feature nay.
+# ===========================================================================
+
+API_KEYS = {key.strip() for key in os.environ.get("API_KEYS", "").split(",") if key.strip()}
+
+
+def require_api_key(x_api_key: str = Header(default="")) -> None:
+    """Dependency: chi bat buoc khi API_KEYS duoc cau hinh."""
+    if not API_KEYS:
+        return
+    if x_api_key not in API_KEYS:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing or invalid API key. Pass a valid key in the X-API-Key header.",
+            headers={"WWW-Authenticate": "API-Key"},
+        )
 
 
 def require_ai_enabled() -> None:
@@ -191,7 +217,9 @@ def prometheus_metrics() -> PlainTextResponse:
     "/chat",
     response_model=ChatResponse,
     tags=["agent"],
-    dependencies=[Depends(require_ai_enabled), Depends(enforce_rate_limit)],
+    dependencies=[
+        Depends(require_api_key), Depends(require_ai_enabled), Depends(enforce_rate_limit),
+    ],
 )
 def chat(request: ChatRequest) -> ChatResponse:
     """Hoi mot cau, doi agent lam xong, tra ve mot cuc JSON.
@@ -292,7 +320,9 @@ def agent_events(question: str) -> Iterator[str]:
 @app.get(
     "/chat/stream",
     tags=["agent"],
-    dependencies=[Depends(require_ai_enabled), Depends(enforce_rate_limit)],
+    dependencies=[
+        Depends(require_api_key), Depends(require_ai_enabled), Depends(enforce_rate_limit),
+    ],
 )
 def chat_stream(q: str = Query(min_length=3, max_length=500, description="Cau hoi")):
     """Hoi mot cau, nhan tung su kien ngay khi agent lam - khong phai cho het 15 giay.
