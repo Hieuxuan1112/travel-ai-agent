@@ -149,6 +149,128 @@ def test_existing_but_empty_store_directory_triggers_a_rebuild(monkeypatch, tmp_
 def test_both_tools_are_registered_with_descriptions():
     """Mo ta tool la thu LLM dua vao de chon tool -> khong duoc de trong."""
     names = {t.name for t in lab.TOOLS}
-    assert names == {"search_travel_info", "weather_forecast"}
+    assert names == {"search_travel_info", "weather_forecast", "rank_town_candidates"}
     for tool in lab.TOOLS:
         assert len(tool.description) > 30
+
+
+def test_temp_score_trong_khoang_la_1():
+    assert lab._temp_score(20.0, min_temp_c=15.0, max_temp_c=25.0) == 1.0
+
+
+def test_temp_score_ngoai_khoang_giam_tuyen_tinh():
+    # 10 do, khoang [15, 25], lech 5 do = het bien do -> 0.0
+    assert lab._temp_score(10.0, min_temp_c=15.0, max_temp_c=25.0) == 0.0
+    # lech 2.5 do trong bien do 5 do -> con 0.5
+    assert lab._temp_score(12.5, min_temp_c=15.0, max_temp_c=25.0) == pytest.approx(0.5)
+
+
+def test_temp_score_qua_xa_khong_am():
+    assert lab._temp_score(-10.0, min_temp_c=15.0, max_temp_c=25.0) == 0.0
+
+
+def test_condition_score_mua_thi_0():
+    assert lab._condition_score({"weather": "rain", "precipitation_mm": 2.0}) == 0.0
+    assert lab._condition_score({"weather": "thunderstorm", "precipitation_mm": 0}) == 0.0
+
+
+def test_condition_score_luong_mua_nho_van_0_neu_qua_nguong():
+    assert lab._condition_score({"weather": "overcast", "precipitation_mm": 1.0}) == 0.0
+
+
+def test_condition_score_kho_rao_thi_1():
+    assert lab._condition_score({"weather": "clear sky", "precipitation_mm": 0.0}) == 1.0
+
+
+def test_weather_fit_ket_hop_ca_hai_nua():
+    # dep ca nhiet do lan dieu kien -> 1.0
+    weather = {"temperature": 20.0, "weather": "clear sky", "precipitation_mm": 0.0}
+    assert lab._weather_fit_score(weather, 15.0, 25.0) == 1.0
+    # dung nhiet do nhung mua -> chi con nua diem
+    weather_rain = {"temperature": 20.0, "weather": "rain", "precipitation_mm": 3.0}
+    assert lab._weather_fit_score(weather_rain, 15.0, 25.0) == 0.5
+
+
+def test_weather_fit_thieu_nhiet_do_thi_0():
+    assert lab._weather_fit_score({"weather": "clear sky"}, 15.0, 25.0) == 0.0
+
+
+class _FakeVectorStoreForRanking:
+    """Gia lap similarity_search_with_score: tra ve distance co dinh theo ten town."""
+
+    def __init__(self, distances: dict[str, float]):
+        self._distances = distances
+
+    def similarity_search_with_score(self, query, k=1):
+        distance = self._distances.get(query, 10.0)  # xa mac dinh neu khong khai bao
+        return [(None, distance)]
+
+
+def test_relevance_score_la_ham_don_dieu_giam_theo_distance(monkeypatch):
+    fake_store = _FakeVectorStoreForRanking({"St Ives": 0.1, "Bude": 4.0})
+    monkeypatch.setattr(lab, "get_travel_info_vectorstore", lambda: fake_store)
+
+    close = lab._relevance_score("St Ives")
+    far = lab._relevance_score("Bude")
+    assert close > far
+    assert 0.0 < far <= 1.0
+
+
+def test_score_candidates_khong_relax_khi_du_ung_vien_dat_nguong(monkeypatch):
+    monkeypatch.setattr(lab, "_relevance_score", lambda town: 0.9)
+    candidates = [
+        {"town": "A", "weather": {"temperature": 20.0, "weather": "clear sky",
+                                   "precipitation_mm": 0.0}},
+        {"town": "B", "weather": {"temperature": 19.0, "weather": "clear sky",
+                                   "precipitation_mm": 0.0}},
+        {"town": "C", "weather": {"temperature": 30.0, "weather": "rain",
+                                   "precipitation_mm": 5.0}},
+    ]
+    result = lab._score_candidates(candidates, min_temp_c=15.0, max_temp_c=25.0,
+                                    min_weather_fit=0.5, top_n=2)
+
+    assert result["relaxed"] is False
+    assert result["relax_reason"] is None
+    assert [c["town"] for c in result["ranked"]] == ["A", "B"]
+
+
+def test_score_candidates_relax_khi_khong_du_ung_vien(monkeypatch):
+    monkeypatch.setattr(lab, "_relevance_score", lambda town: 0.5)
+    candidates = [
+        {"town": "A", "weather": {"temperature": 30.0, "weather": "rain",
+                                   "precipitation_mm": 5.0}},
+        {"town": "B", "weather": {"temperature": 31.0, "weather": "rain",
+                                   "precipitation_mm": 5.0}},
+    ]
+    result = lab._score_candidates(candidates, min_temp_c=15.0, max_temp_c=25.0,
+                                    min_weather_fit=0.5, top_n=2)
+
+    assert result["relaxed"] is True
+    assert "threshold" in result["relax_reason"]
+    assert len(result["ranked"]) == 2
+
+
+def test_rank_town_candidates_tool_tra_ve_dung_cau_truc(monkeypatch):
+    fake_store = _FakeVectorStoreForRanking({"St Ives": 0.2, "Newquay": 0.3})
+    monkeypatch.setattr(lab, "get_travel_info_vectorstore", lambda: fake_store)
+
+    fake_weather = {
+        "St Ives": {"temperature": 20.0, "weather": "clear sky", "precipitation_mm": 0.0},
+        "Newquay": {"temperature": 21.0, "weather": "sunny", "precipitation_mm": 0.0},
+    }
+
+    class _FakeWeatherTool:
+        def invoke(self, args):
+            return fake_weather[args["town"]]
+
+    monkeypatch.setattr(lab, "weather_forecast", _FakeWeatherTool())
+
+    result = lab.rank_town_candidates.invoke({"towns": ["St Ives", "Newquay"]})
+
+    assert result["relaxed"] is False
+    assert {c["town"] for c in result["ranked"]} == {"St Ives", "Newquay"}
+    assert set(result["ranked"][0]) == {"town", "relevance", "weather_fit", "composite"}
+
+
+def test_rank_town_candidates_tool_co_trong_danh_sach_tool():
+    assert lab.rank_town_candidates in lab.TOOLS
