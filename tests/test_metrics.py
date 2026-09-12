@@ -85,3 +85,16 @@ def test_unknown_model_counts_tokens_but_not_cost():
 
     assert counter_value("agent_llm_tokens_total", model="some-new-model", kind="output") == 100
     assert counter_value("agent_llm_cost_usd_total", model="some-new-model") == cost_before
+
+
+def test_reimporting_the_module_does_not_crash(monkeypatch):
+    """Bug that gap tren Streamlit Cloud: server co reload/rerun co the thuc
+    thi lai module nay trong CUNG mot tien trinh (xoa khoi sys.modules roi
+    import lai) - REGISTRY cua Prometheus la singleton toan tien trinh, nen
+    lan hai dam vao ten cu se nem ValueError "Duplicated timeseries" neu
+    khong co _metric() tra ve collector cu thay vi tao moi."""
+    monkeypatch.delitem(sys.modules, "metrics", raising=False)
+    import metrics as reimported  # noqa: F401 - chi can khong nem exception
+
+    monkeypatch.delitem(sys.modules, "metrics", raising=False)
+    import metrics as reimported_again  # noqa: F401

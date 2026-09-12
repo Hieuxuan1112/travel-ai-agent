@@ -13,7 +13,7 @@ main_02_02.py (theo tool / theo lan goi LLM).
 
 import os
 
-from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, multiprocess
+from prometheus_client import REGISTRY, CollectorRegistry, Counter, Gauge, Histogram, multiprocess
 
 # ---------------------------------------------------------------------------
 # Bon loai thuoc do cua Prometheus - chon dung loai la nua phan thang loi:
@@ -23,7 +23,25 @@ from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram, mult
 #   Summary   it dung, bo qua
 # ---------------------------------------------------------------------------
 
-REQUESTS = Counter(
+
+def _metric(cls, name: str, documentation: str, labelnames=(), **kwargs):
+    """Tao metric, hoac tra ve metric CU NEU TEN DA DANG KY.
+
+    REGISTRY cua prometheus_client la mot singleton toan tien trinh. Streamlit
+    (va bat ky server hot-reload nao) co the thuc thi lai module nay trong
+    CUNG mot tien trinh song (rerun xoa module khoi sys.modules roi import
+    lai) - lan hai dam vao ten cu se nem ValueError "Duplicated timeseries",
+    lam sap ca app. Tra ve collector da dang ky thay vi tao moi giai quyet
+    dung goc do, khong phai vong qua bang try/except o noi goi.
+    """
+    existing = REGISTRY._names_to_collectors.get(name)
+    if existing is not None:
+        return existing
+    return cls(name, documentation, labelnames, **kwargs)
+
+
+REQUESTS = _metric(
+    Counter,
     "agent_requests_total",
     "So request da xu ly",
     ["endpoint", "status"],
@@ -31,61 +49,71 @@ REQUESTS = Counter(
 
 # Buckets mac dinh cua Prometheus dung o 10s - agent nay chay 5-20s nen phai
 # tu dinh nghia, khong thi moi request deu roi vao ro cuoi va p95 vo nghia.
-REQUEST_DURATION = Histogram(
+REQUEST_DURATION = _metric(
+    Histogram,
     "agent_request_duration_seconds",
     "Thoi gian tra loi tron mot cau hoi",
     ["endpoint"],
     buckets=(0.5, 1, 2, 5, 8, 12, 20, 30, 60),
 )
 
-IN_FLIGHT = Gauge(
+IN_FLIGHT = _metric(
+    Gauge,
     "agent_requests_in_flight",
     "So request dang chay ngay luc nay",
 )
 
-RATE_LIMITED = Counter(
+RATE_LIMITED = _metric(
+    Counter,
     "agent_rate_limited_total",
     "So request bi tu choi vi vuot gioi han tan suat",
 )
 
-TOOL_CALLS = Counter(
+TOOL_CALLS = _metric(
+    Counter,
     "agent_tool_calls_total",
     "So lan tung tool duoc goi",
     ["tool"],
 )
 
-TOOL_ERRORS = Counter(
+TOOL_ERRORS = _metric(
+    Counter,
     "agent_tool_errors_total",
     "So lan tool tra ve loi",
     ["tool"],
 )
 
-TOOL_DURATION = Histogram(
+TOOL_DURATION = _metric(
+    Histogram,
     "agent_tool_duration_seconds",
     "Thoi gian chay cua tung tool",
     ["tool"],
     buckets=(0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10),
 )
 
-WEATHER_CACHE = Counter(
+WEATHER_CACHE = _metric(
+    Counter,
     "agent_weather_cache_total",
     "Cache Redis cho weather_forecast: hit hay miss (khong dat REDIS_URL thi khong tang)",
     ["result"],                  # result = hit | miss
 )
 
-LLM_CALLS = Counter(
+LLM_CALLS = _metric(
+    Counter,
     "agent_llm_calls_total",
     "So lan goi model",
     ["model"],
 )
 
-LLM_TOKENS = Counter(
+LLM_TOKENS = _metric(
+    Counter,
     "agent_llm_tokens_total",
     "So token da dung",
     ["model", "kind"],          # kind = input | output
 )
 
-LLM_COST = Counter(
+LLM_COST = _metric(
+    Counter,
     "agent_llm_cost_usd_total",
     "Tien da tieu (USD, uoc tinh tu bang gia)",
     ["model"],
@@ -142,7 +170,5 @@ def build_registry() -> CollectorRegistry:
         registry = CollectorRegistry()
         multiprocess.MultiProcessCollector(registry)
         return registry
-
-    from prometheus_client import REGISTRY
 
     return REGISTRY
