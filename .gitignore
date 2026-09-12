@@ -13,3 +13,4 @@ __pycache__/
 .claude/
 results.json
 docs/pdf/
+.worktrees/
