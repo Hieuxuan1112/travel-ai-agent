@@ -36,6 +36,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmb
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import tools_condition
+from pydantic import ValidationError
 
 import metrics
 from retrieval import format_with_citations
@@ -333,10 +334,22 @@ class ToolsExecutionNode:
             tool = self._tools_by_name[tool_name]
 
             metrics.TOOL_CALLS.labels(tool=tool_name).inc()
-            with metrics.TOOL_DURATION.labels(tool=tool_name).time():
-                result = tool.invoke(tool_args)
-            # Tool cua ta khong nem exception ma tra dict co khoa "error"
-            # (de LLM tu xu ly) -> phai dem loi theo kieu do.
+            try:
+                with metrics.TOOL_DURATION.labels(tool=tool_name).time():
+                    result = tool.invoke(tool_args)
+            except ValidationError as exc:
+                # LLM truyen sai schema (sai kieu, thieu truong bat buoc...): day la
+                # loi truoc khi vao than ham tool, khac voi loi trong luc chay ma
+                # tool tu bat (xem weather_forecast). Tra ve ToolMessage bao ro sai
+                # o dau thay vi nem exception lam sap ca graph - luot ke tiep LLM
+                # doc duoc loi nay va tu sua tham so, tuong duong mot lan "retry"
+                # ma khong can vong lap Python rieng.
+                result = {
+                    "error": f"Invalid arguments for tool '{tool_name}'.",
+                    "details": str(exc),
+                }
+            # Ca hai kieu loi (sai schema o day, hoac tool tu bat loi luc chay nhu
+            # weather_forecast) deu tra dict co khoa "error" -> dem chung mot cho.
             if isinstance(result, dict) and "error" in result:
                 metrics.TOOL_ERRORS.labels(tool=tool_name).inc()
 
