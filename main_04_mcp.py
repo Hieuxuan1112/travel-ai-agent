@@ -32,7 +32,11 @@ load_dotenv(PROJECT_DIR / ".env")
 
 SYSTEM_PROMPT = """You are a helpful assistant that can search travel information
 and get the weather forecast. Only use the tools to find the information you need
-(including town names). Never invent town names from your own knowledge."""
+(including town names). Never invent town names from your own knowledge.
+When the user wants you to pick or compare two or more towns by weather, call
+rank_town_candidates with the candidate town names instead of calling
+weather_forecast yourself for each one. If it reports relaxed=true, tell the
+user plainly that you relaxed the criteria and why."""
 
 # Khai bao server MCP can ket noi. Muon them server khac chi viec them mot muc nua.
 MCP_SERVERS = {

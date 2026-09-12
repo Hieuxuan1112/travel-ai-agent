@@ -62,7 +62,13 @@ DATASET = [
     ("What is the weather in a town that does not exist, Xyzzyville?",
      {"weather_forecast"}),
 
-    # --- ca hai tool: goi y + doi chieu thoi tiet (qua rank_town_candidates) ---
+    # --- ca hai tool: chi cac cau THAT SU can so sanh nhieu candidate theo mot
+    # tieu chi thoi tiet (>=2 town, hoac "based on the weather"/"not raining")
+    # moi qua rank_town_candidates. Cau chi xin GOI Y MOT town roi hoi thoi tiet
+    # cua no ("suggest a X", "suggest one", ten town cu the) khong can so sanh
+    # gi ca - agent goi thang weather_forecast, dung nhu vay. Da kiem chung
+    # bang live run: 5 case ky vong sai "rank_town_candidates" trong khi agent
+    # dung dan chi goi weather_forecast, khien gate that bai o 84%.
     ("Suggest two Cornwall beach towns with nice weather",
      {"search_travel_info", "rank_town_candidates"}),
     ("I want a surfing town in Cornwall where it is not raining today",
@@ -70,14 +76,16 @@ DATASET = [
     ("Which Cornwall coastal town should I visit today based on the weather?",
      {"search_travel_info", "rank_town_candidates"}),
     ("Suggest a fishing village in Cornwall and tell me its current weather",
-     {"search_travel_info", "rank_town_candidates"}),
+     {"search_travel_info", "weather_forecast"}),
     ("I want to visit a historic Cornwall town - suggest one and check if it is "
-     "sunny there today", {"search_travel_info", "rank_town_candidates"}),
+     "sunny there today", {"search_travel_info", "weather_forecast"}),
     ("Recommend a town near the Eden Project and give me its current forecast",
-     {"search_travel_info", "rank_town_candidates"}),
+     {"search_travel_info", "weather_forecast"}),
     ("Is Mevagissey a good place for seafood, and how is the weather there now?",
-     {"search_travel_info", "rank_town_candidates"}),
+     {"search_travel_info", "weather_forecast"}),
     ("What outdoor activities can I do in Perranporth today given the weather?",
+     {"search_travel_info", "weather_forecast"}),
+    ("Suggest two Cornwall beach towns colder than 0 degrees Celsius right now",
      {"search_travel_info", "rank_town_candidates"}),
 ]
 
