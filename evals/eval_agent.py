@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from langchain_core.messages import AIMessage, HumanMessage  # noqa: E402
 
+import eval_history  # noqa: E402
 import main_02_02 as lab  # noqa: E402
 import metrics  # noqa: E402
 
@@ -206,6 +207,19 @@ def main(limit: int | None = None, gate: bool = False) -> int:
         encoding="utf-8",
     )
     print(f"\nTool-selection accuracy {accuracy:.0%} | judge {avg_score:.1f}/5 -> {out}")
+
+    # results.md/results.json bi ghi de moi lan chay - ghi them vao lich su co
+    # thoi gian de tra loi "chat luong co tut theo thoi gian khong" bang du
+    # lieu that (xem eval_history.py).
+    eval_history.record_run(
+        model=lab.CHAT_MODEL,
+        dataset_size=len(rows),
+        tool_accuracy=accuracy,
+        judge_score=avg_score,
+        avg_latency_s=avg_time,
+        cost_per_1k_usd=None if total_cost is None else total_cost / len(rows) * 1000,
+    )
+    print(f"   [eval_history] backend: {eval_history.backend_name()}")
 
     # Tren GitHub Actions: day nguyen bang ket qua vao trang tom tat cua job,
     # de xem duoc ngay tren giao dien khong phai tai artifact ve.
