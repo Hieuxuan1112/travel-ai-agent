@@ -27,3 +27,7 @@ rank-bm25==0.2.2
 
 # Prometheus metrics (metrics.py, endpoint /metrics)
 prometheus-client==0.24.1
+
+# Rate-limit store + weather cache dung chung nhieu instance (redis_client.py).
+# Khong dat REDIS_URL thi khong dung toi - tu lui ve bo dem trong tien trinh.
+redis==8.1.0

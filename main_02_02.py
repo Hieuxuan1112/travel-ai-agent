@@ -39,6 +39,7 @@ from langgraph.prebuilt import tools_condition
 from pydantic import ValidationError
 
 import metrics
+import redis_client
 from retrieval import format_with_citations
 
 # Console Windows mac dinh la cp1252 -> khong go duoc tieng Viet. Ep UTF-8 cho an toan.
@@ -281,11 +282,33 @@ def search_travel_info(query: str) -> str:
     return format_with_citations(results)
 
 
+# Thoi tiet hien tai khong doi tung giay - cache vai phut giam duoc phan lon
+# goi lap lai (nhieu user cung hoi ve St Ives trong cung khoang thoi gian) ma
+# khong lam sai lech du lieu dang ke. Khong dat REDIS_URL -> khong cache gi ca,
+# hanh vi giong het truoc khi co Redis.
+WEATHER_CACHE_TTL_SECONDS = int(os.environ.get("WEATHER_CACHE_TTL_SECONDS", "300"))
+
+
+def _weather_cache_key(town: str, country: str) -> str:
+    return f"weather:{town.strip().lower()}:{country.strip().lower()}"
+
+
 @tool(description="Get the CURRENT weather of a town or city anywhere in the world, given "
                   "its name. Pass 'country' when you know it (e.g. 'United Kingdom') because "
                   "many towns share a name. Returns condition, temperature, wind and rain.")
 def weather_forecast(town: str, country: str = "") -> dict:
     """Get the current weather for a given town."""
+    import json as _json
+
+    redis = redis_client.get_redis()
+    cache_key = _weather_cache_key(town, country)
+    if redis is not None:
+        cached = redis.get(cache_key)
+        if cached is not None:
+            metrics.WEATHER_CACHE.labels(result="hit").inc()
+            return _json.loads(cached)
+        metrics.WEATHER_CACHE.labels(result="miss").inc()
+
     service = WeatherForecastService if WEATHER_MODE == "mock" else OpenMeteoWeatherService
     try:
         forecast = (service.get_forecast(town, country)
@@ -294,6 +317,11 @@ def weather_forecast(town: str, country: str = "") -> dict:
         return {"error": f"Weather service failed for '{town}'.", "details": str(exc)}
     if forecast is None:
         return {"error": f"No weather data available for '{town}'."}
+
+    # Khong cache loi: mot lan mang chap chon khong duoc "dong bang" thanh loi
+    # vinh vien trong _CACHE_TTL_SECONDS tiep theo.
+    if redis is not None:
+        redis.set(cache_key, _json.dumps(forecast), ex=WEATHER_CACHE_TTL_SECONDS)
     return forecast
 
 

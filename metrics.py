@@ -67,6 +67,12 @@ TOOL_DURATION = Histogram(
     buckets=(0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10),
 )
 
+WEATHER_CACHE = Counter(
+    "agent_weather_cache_total",
+    "Cache Redis cho weather_forecast: hit hay miss (khong dat REDIS_URL thi khong tang)",
+    ["result"],                  # result = hit | miss
+)
+
 LLM_CALLS = Counter(
     "agent_llm_calls_total",
     "So lan goi model",
