@@ -17,6 +17,10 @@ services:
     environment:
       # So cau hoi toi da moi IP moi gio. Dat thap khi demo cong khai.
       RATE_LIMIT_PER_HOUR: ${RATE_LIMIT_PER_HOUR:-30}
+      # Chia se rate-limit + cache thoi tiet giua nhieu instance qua Redis.
+      # Bo dong nay (hoac xoa service redis ben duoi) -> tu lui ve bo dem
+      # trong tien trinh, khong can Redis moi chay duoc (xem redis_client.py).
+      REDIS_URL: redis://redis:6379/0
     volumes:
       # Volume co ten: du xoa container, vector store van con -> lan sau bat len
       # la chay ngay, khong phai tao embedding lai (do ton tien va thoi gian).
@@ -28,6 +32,9 @@ services:
       timeout: 5s
       start_period: 180s          # lan dau con tai trang web + tao embedding
       retries: 3
+    depends_on:
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
   ui:
@@ -58,6 +65,19 @@ services:
         condition: service_healthy
       # Doi api "khoe" roi moi bat ui. Khong chi de cho dep: api la thang dung
       # vector store, neu hai container cung dung mot luc thi tranh chap file.
+    restart: unless-stopped
+
+  redis:
+    image: redis:8.2-alpine
+    ports:
+      - "6379:6379"                # mo ra ngoai de tien kiem tra bang redis-cli tu may that
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     restart: unless-stopped
 
   # ----------------------------- Giam sat -----------------------------------
@@ -94,3 +114,4 @@ volumes:
   chroma_data:
   prometheus_data:
   grafana_data:
+  redis_data:

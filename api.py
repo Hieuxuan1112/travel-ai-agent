@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 
 import main_02_02 as lab
 import metrics
+import redis_client
 
 # ===========================================================================
 # 1. VONG DOI UNG DUNG (lifespan)
@@ -113,19 +114,67 @@ def client_key(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def enforce_rate_limit(request: Request) -> None:
-    """Dependency cua FastAPI: chay TRUOC handler, vuot nguong thi nem 429."""
-    key = client_key(request)
-    now = time.time()
-    hits = _hits[key]
+def _check_rate_limit_memory(key: str, now: float) -> tuple[bool, int]:
+    """Cua so truot trong BO NHO tien trinh - ban goc, dung khi khong co Redis.
 
-    # Bo cac luot da roi ra ngoai cua so 1 gio
+    Han che da biet: dem rieng cho MOI tien trinh, mat sach khi restart, khong
+    chia se giua nhieu instance (xem _check_rate_limit_redis ben duoi).
+    """
+    hits = _hits[key]
     while hits and now - hits[0] > _RATE_WINDOW_SECONDS:
         hits.popleft()
 
     if len(hits) >= RATE_LIMIT_PER_HOUR:
-        metrics.RATE_LIMITED.inc()
         retry_after = int(_RATE_WINDOW_SECONDS - (now - hits[0])) + 1
+        return False, retry_after
+
+    hits.append(now)
+    return True, 0
+
+
+def _check_rate_limit_redis(client, key: str, now: float) -> tuple[bool, int]:
+    """Cung mot thuat toan cua so truot, nhung luu trong Redis sorted set thay
+    vi bo nho tien trinh - nhieu instance API dung chung mot bo dem that su.
+
+    Diem (score) cua moi phan tu la chinh thoi diem request - ZREMRANGEBYSCORE
+    xoa cac luot da qua cua so 1 gio, ZCARD dem con lai bao nhieu. EXPIRE dat
+    tren ca key de Redis tu don don cho client da lau khong quay lai, khong
+    can mot tien trinh don rac rieng.
+    """
+    redis_key = f"ratelimit:{key}"
+    client.zremrangebyscore(redis_key, 0, now - _RATE_WINDOW_SECONDS)
+    count = client.zcard(redis_key)
+
+    if count >= RATE_LIMIT_PER_HOUR:
+        oldest = client.zrange(redis_key, 0, 0, withscores=True)
+        oldest_ts = oldest[0][1] if oldest else now
+        retry_after = int(_RATE_WINDOW_SECONDS - (now - oldest_ts)) + 1
+        return False, retry_after
+
+    pipe = client.pipeline()
+    pipe.zadd(redis_key, {str(now): now})
+    pipe.expire(redis_key, _RATE_WINDOW_SECONDS)
+    pipe.execute()
+    return True, 0
+
+
+def enforce_rate_limit(request: Request) -> None:
+    """Dependency cua FastAPI: chay TRUOC handler, vuot nguong thi nem 429.
+
+    Dung Redis khi co REDIS_URL (chia se duoc giua nhieu instance), tu lui ve
+    bo dem trong tien trinh khi khong co - xem redis_client.get_redis().
+    """
+    key = client_key(request)
+    now = time.time()
+    redis = redis_client.get_redis()
+
+    if redis is not None:
+        allowed, retry_after = _check_rate_limit_redis(redis, key, now)
+    else:
+        allowed, retry_after = _check_rate_limit_memory(key, now)
+
+    if not allowed:
+        metrics.RATE_LIMITED.inc()
         raise HTTPException(
             status_code=429,
             detail=(
@@ -135,8 +184,6 @@ def enforce_rate_limit(request: Request) -> None:
             ),
             headers={"Retry-After": str(retry_after)},
         )
-
-    hits.append(now)
 
 
 # ===========================================================================

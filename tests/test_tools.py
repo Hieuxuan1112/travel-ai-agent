@@ -61,6 +61,44 @@ def fake_open_meteo(monkeypatch):
     return calls
 
 
+def test_weather_forecast_is_cached_in_redis_on_second_call(fake_open_meteo, monkeypatch):
+    import fakeredis
+
+    monkeypatch.setattr(lab, "WEATHER_MODE", "real")
+    fake = fakeredis.FakeRedis()
+    monkeypatch.setattr(lab.redis_client, "get_redis", lambda: fake)
+
+    first = lab.weather_forecast.invoke({"town": "Falmouth", "country": "United Kingdom"})
+    calls_after_first = len(fake_open_meteo)
+    second = lab.weather_forecast.invoke({"town": "Falmouth", "country": "United Kingdom"})
+
+    assert second == first
+    assert len(fake_open_meteo) == calls_after_first  # khong goi mang them lan nao
+
+
+def test_weather_forecast_without_redis_hits_network_every_time(fake_open_meteo, monkeypatch):
+    monkeypatch.setattr(lab, "WEATHER_MODE", "real")
+    monkeypatch.setattr(lab.redis_client, "get_redis", lambda: None)
+
+    lab.weather_forecast.invoke({"town": "Falmouth", "country": "United Kingdom"})
+    lab.weather_forecast.invoke({"town": "Falmouth", "country": "United Kingdom"})
+
+    assert len(fake_open_meteo) == 4  # 2 lan goi x (geocode + forecast) = 4
+
+
+def test_weather_forecast_does_not_cache_errors(monkeypatch):
+    import fakeredis
+
+    monkeypatch.setattr(lab, "WEATHER_MODE", "real")
+    fake = fakeredis.FakeRedis()
+    monkeypatch.setattr(lab.redis_client, "get_redis", lambda: fake)
+    monkeypatch.setattr(lab.requests, "get", lambda *a, **k: _FakeResponse({"results": []}))
+
+    lab.weather_forecast.invoke({"town": "Khong Ton Tai 123"})
+
+    assert fake.get(lab._weather_cache_key("Khong Ton Tai 123", "")) is None
+
+
 def test_weather_tool_normalises_open_meteo_payload(fake_open_meteo, monkeypatch):
     monkeypatch.setattr(lab, "WEATHER_MODE", "real")
     result = lab.weather_forecast.invoke({"town": "Falmouth"})
