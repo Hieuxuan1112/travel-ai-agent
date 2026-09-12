@@ -28,24 +28,63 @@ import main_02_02 as lab  # noqa: E402
 import metrics  # noqa: E402
 
 DATASET = [
+    # --- search_travel_info only: chu de da dang, khong lap lai "surfing"/"beach" ---
     ("Tell me about surfing in Cornwall", {"search_travel_info"}),
     ("What can I do in St Ives?", {"search_travel_info"}),
     ("Suggest three towns with a nice beach in Cornwall", {"search_travel_info"}),
-    # Mot town duy nhat: van goi weather_forecast truc tiep, khong qua ranking.
+    ("What are the best surf spots in Newquay?", {"search_travel_info"}),
+    ("Tell me about the history of Tintagel", {"search_travel_info"}),
+    ("What is there to do at the Eden Project?", {"search_travel_info"}),
+    ("Is St Michael's Mount worth visiting?", {"search_travel_info"}),
+    ("What food is Cornwall famous for?", {"search_travel_info"}),
+    ("How do I get around Cornwall without a car?", {"search_travel_info"}),
+    ("What are some quiet fishing villages in Cornwall?", {"search_travel_info"}),
+    ("Tell me about Land's End", {"search_travel_info"}),
+    ("Tell me literally anything interesting about Cornwall", {"search_travel_info"}),
+
+    # --- weather_forecast only: MOT town duy nhat moi goi weather_forecast truc
+    # tiep. Tu 2 town tro len la so sanh -> SYSTEM_PROMPT bao goi
+    # rank_town_candidates thay vi tu goi weather_forecast rieng le cho tung
+    # town (tool nay tu lay thoi tiet BEN TRONG than ham, nen weather_forecast
+    # khong con xuat hien rieng trong lich su tool_calls cua LLM nua).
     ("What is the weather in Falmouth, Cornwall right now?", {"weather_forecast"}),
-    # Tu 2 town tro len: SYSTEM_PROMPT bao goi rank_town_candidates thay vi tu
-    # goi weather_forecast rieng le - tool nay tu lay thoi tiet BEN TRONG than
-    # ham (xem main_02_02.rank_town_candidates), nen weather_forecast KHONG con
-    # xuat hien rieng trong lich su tool_calls cua LLM nua. Cap nhat lai bo doi
-    # chieu nay sau khi doi hanh vi o rank_town_candidates (PR #6) - truoc do
-    # cac case nay ky vong "weather_forecast" va lam gate that bai (44%).
     ("Compare the weather in Newquay and Penzance", {"rank_town_candidates"}),
+    ("What's the weather like in Padstow today?", {"weather_forecast"}),
+    ("Current temperature in Truro?", {"weather_forecast"}),
+    ("Is it raining in Bude right now?", {"weather_forecast"}),
+    ("What's the wind speed in Fowey?", {"weather_forecast"}),
+    ("Weather forecast for Looe", {"weather_forecast"}),
+    ("How warm is Mousehole today?", {"weather_forecast"}),
+    ("Compare the weather in St Mawes and Port Isaac", {"rank_town_candidates"}),
+    ("Compare weather between Truro and Bodmin", {"rank_town_candidates"}),
+    # Ten khong ton tai: dung de kiem tra agent xu ly loi "khong tim thay" gon
+    # gang thay vi bia du lieu - khong doi tool khac, chi doi khong crash.
+    ("What is the weather in a town that does not exist, Xyzzyville?",
+     {"weather_forecast"}),
+
+    # --- ca hai tool: chi cac cau THAT SU can so sanh nhieu candidate theo mot
+    # tieu chi thoi tiet (>=2 town, hoac "based on the weather"/"not raining")
+    # moi qua rank_town_candidates. Cau chi xin GOI Y MOT town roi hoi thoi tiet
+    # cua no ("suggest a X", "suggest one", ten town cu the) khong can so sanh
+    # gi ca - agent goi thang weather_forecast, dung nhu vay. Da kiem chung
+    # bang live run: 5 case ky vong sai "rank_town_candidates" trong khi agent
+    # dung dan chi goi weather_forecast, khien gate that bai o 84%.
     ("Suggest two Cornwall beach towns with nice weather",
      {"search_travel_info", "rank_town_candidates"}),
     ("I want a surfing town in Cornwall where it is not raining today",
      {"search_travel_info", "rank_town_candidates"}),
     ("Which Cornwall coastal town should I visit today based on the weather?",
      {"search_travel_info", "rank_town_candidates"}),
+    ("Suggest a fishing village in Cornwall and tell me its current weather",
+     {"search_travel_info", "weather_forecast"}),
+    ("I want to visit a historic Cornwall town - suggest one and check if it is "
+     "sunny there today", {"search_travel_info", "weather_forecast"}),
+    ("Recommend a town near the Eden Project and give me its current forecast",
+     {"search_travel_info", "weather_forecast"}),
+    ("Is Mevagissey a good place for seafood, and how is the weather there now?",
+     {"search_travel_info", "weather_forecast"}),
+    ("What outdoor activities can I do in Perranporth today given the weather?",
+     {"search_travel_info", "weather_forecast"}),
     ("Suggest two Cornwall beach towns colder than 0 degrees Celsius right now",
      {"search_travel_info", "rank_town_candidates"}),
 ]
