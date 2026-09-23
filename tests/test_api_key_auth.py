@@ -72,6 +72,29 @@ def test_multiple_keys_are_all_accepted(client, monkeypatch):
         assert response.status_code == 200
 
 
+def test_wrong_key_attempts_still_consume_rate_limit(client, monkeypatch):
+    """enforce_rate_limit phai chay TRUOC require_api_key: neu khong, ai do
+    khong biet key co the thu sai vo han lan ma khong bao gio bi 429, bien
+    rate limit thanh vo tac dung voi chinh ke dang co gang do quota."""
+    monkeypatch.setattr(api, "API_KEYS", {"secret-123"})
+    monkeypatch.setattr(api, "RATE_LIMIT_PER_HOUR", 3)
+    api._hits.clear()
+    try:
+        for _ in range(3):
+            response = client.post(
+                "/chat", json={"question": "weather in St Ives?"},
+                headers={"X-API-Key": "wrong-key"},
+            )
+            assert response.status_code == 401
+        response = client.post(
+            "/chat", json={"question": "weather in St Ives?"},
+            headers={"X-API-Key": "wrong-key"},
+        )
+        assert response.status_code == 429
+    finally:
+        api._hits.clear()
+
+
 def test_stream_endpoint_also_requires_the_key_when_configured(client, monkeypatch):
     monkeypatch.setattr(api, "API_KEYS", {"secret-123"})
     blocked = client.get("/chat/stream", params={"q": "weather in St Ives?"})

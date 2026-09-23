@@ -87,6 +87,28 @@ app.add_middleware(
 
 
 # ===========================================================================
+# 1a. SECURITY HEADERS - chan may loai tan cong pho bien o tang trinh duyet,
+# khong lien quan gi den logic nghiep vu nen dat rieng, ngoai vong request.
+#
+# KHONG dat Content-Security-Policy: trang demo o cuoi file (DEMO_PAGE) co
+# <script>/<style> inline - mot CSP that su (script-src khong 'unsafe-inline')
+# se lam demo do vo, va mot CSP long leo (cho phep 'unsafe-inline') thi coi
+# nhu khong chan duoc gi - chua co ly do de doi trade-off nay.
+# ===========================================================================
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    # Vo hai khi chay qua HTTP (trinh duyet bo qua HSTS tren ket noi khong
+    # ma hoa) - Azure Container Apps va Streamlit Cloud deu da tu dong ep
+    # HTTPS o tang ingress, header nay chi khoa chac them o tang trinh duyet.
+    response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains"
+    return response
+
+
+# ===========================================================================
 # 1b. GIOI HAN TAN SUAT (rate limit)
 #
 # Demo cong khai = key Gemini cua minh nam sau mot cai nut ai tren internet cung
@@ -298,8 +320,12 @@ def prometheus_metrics() -> PlainTextResponse:
     "/chat",
     response_model=ChatResponse,
     tags=["agent"],
+    # enforce_rate_limit TRUOC require_api_key co chu y: neu API key sai chan
+    # truoc, ke do sai key lien tuc de do quota (khong the sai bao nhieu lan
+    # cung duoc, IP van bi dem). Doi cho thi rate limit tro thanh vo tac dung
+    # voi ke khong co key dung.
     dependencies=[
-        Depends(require_api_key), Depends(require_ai_enabled), Depends(enforce_rate_limit),
+        Depends(enforce_rate_limit), Depends(require_api_key), Depends(require_ai_enabled),
     ],
 )
 def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
@@ -408,7 +434,7 @@ def agent_events(agent, question: str, thread_id: str) -> Iterator[str]:
     "/chat/stream",
     tags=["agent"],
     dependencies=[
-        Depends(require_api_key), Depends(require_ai_enabled), Depends(enforce_rate_limit),
+        Depends(enforce_rate_limit), Depends(require_api_key), Depends(require_ai_enabled),
     ],
 )
 def chat_stream(
