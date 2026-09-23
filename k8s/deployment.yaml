@@ -1,0 +1,60 @@
+# Minimal K8s Deployment cho travel-agent-api. KHONG Ingress/HPA/Helm - muc
+# tieu la chung minh biet K8s co ban, khong phai dung lam ha tang that (ha
+# tang that dang la Azure Container Apps, xem docs/DEPLOY.md).
+#
+# Ap dung: kubectl apply -f k8s/
+# Image tag SHA theo dung quyet dinh da chot trong CLAUDE.md (khong dung
+# `latest`) - thay <GIT_SHA> bang sha that truoc khi apply, vd:
+#   sed -i "s/<GIT_SHA>/$(git rev-parse --short HEAD)/" k8s/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: travel-agent-api
+  labels:
+    app: travel-agent-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: travel-agent-api
+  template:
+    metadata:
+      labels:
+        app: travel-agent-api
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/hieuxuan1112/travel-ai-agent:<GIT_SHA>
+          ports:
+            - containerPort: 8000
+          env:
+            - name: GOOGLE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: travel-agent-secrets
+                  key: google-api-key
+          # Dockerfile da chay bang non-root user (appuser) + da Trivy-scan
+          # truoc khi push - securityContext o day chi khoa lai o tang K8s,
+          # phong truong hop mot image khac vo tinh bi deploy nham vao đây.
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
