@@ -90,7 +90,9 @@ class HybridRetriever:
         return [(i, *self._by_id[i]) for i in best if i in self._by_id]
 
 
-def format_with_citations(results: list[tuple[str, str, dict]], source_label: str = "wikivoyage") -> str:
+def format_with_citations(
+    results: list[tuple[str, str, dict]], source_label: str = "wikivoyage"
+) -> str:
     """Dinh dang ket qua kem NGUON, va rao lai vi day la noi dung tu web.
 
     Co nguon thi nguoi dung kiem chung duoc, va model bot bia hon vi phai gan

@@ -559,7 +559,8 @@ with chat_col:
             const pwin = window.parent;
             const ta = pwin.document.querySelector('[data-testid="stChatInputTextArea"]');
             if (ta) {
-              const setter = Object.getOwnPropertyDescriptor(pwin.HTMLTextAreaElement.prototype, "value").set;
+              const proto = pwin.HTMLTextAreaElement.prototype;
+              const setter = Object.getOwnPropertyDescriptor(proto, "value").set;
               setter.call(ta, transcript);
               ta.dispatchEvent(new pwin.Event("input", { bubbles: true }));
               ta.focus();

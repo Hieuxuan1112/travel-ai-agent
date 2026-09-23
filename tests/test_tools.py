@@ -399,7 +399,9 @@ def test_convert_currency_returns_converted_amount(monkeypatch):
         lambda *a, **k: _FakeResponse({"rates": {"EUR": 92.0}, "date": "2026-09-23"}),
     )
 
-    result = lab.convert_currency.invoke({"amount": 100, "from_currency": "usd", "to_currency": "eur"})
+    result = lab.convert_currency.invoke(
+        {"amount": 100, "from_currency": "usd", "to_currency": "eur"}
+    )
 
     assert result == {
         "amount": 100, "from": "USD", "to": "EUR",
@@ -410,7 +412,9 @@ def test_convert_currency_returns_converted_amount(monkeypatch):
 def test_convert_currency_unknown_code_returns_structured_error(monkeypatch):
     monkeypatch.setattr(lab.requests, "get", lambda *a, **k: _FakeResponse({"rates": {}}))
 
-    result = lab.convert_currency.invoke({"amount": 10, "from_currency": "USD", "to_currency": "XXX"})
+    result = lab.convert_currency.invoke(
+        {"amount": 10, "from_currency": "USD", "to_currency": "XXX"}
+    )
 
     assert "error" in result
 
