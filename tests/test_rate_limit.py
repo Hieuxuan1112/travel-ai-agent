@@ -16,7 +16,9 @@ from tests.test_api import FakeAgent  # noqa: E402
 
 @pytest.fixture
 def client(monkeypatch):
-    monkeypatch.setattr(api.lab, "travel_info_agent", FakeAgent())
+    monkeypatch.setattr(api.lab, "build_agent", lambda checkpointer=None: FakeAgent())
+    monkeypatch.setattr(api.persistence, "get_checkpointer", lambda: None)
+    monkeypatch.setattr(api.persistence, "backend_name", lambda: "in-memory")
     monkeypatch.setattr(api.lab, "get_travel_info_vectorstore", lambda: None)
     monkeypatch.setattr(api, "RATE_LIMIT_PER_HOUR", 3)
     api._hits.clear()          # moi test bat dau tu bo dem sach

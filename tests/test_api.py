@@ -5,8 +5,10 @@ Diem hoc o day: test API KHONG duoc goi LLM that. Ta thay
 khong ton tien, khong can mang. Day la cach moi cong ty test service co LLM.
 """
 
+import json
 import os
 import sys
+import uuid
 from pathlib import Path
 
 import pytest
@@ -34,10 +36,15 @@ FAKE_RUN = [
 
 
 class FakeAgent:
-    def stream(self, state, stream_mode=None):
+    def __init__(self):
+        self.last_config = None
+
+    def stream(self, state, config=None, stream_mode=None):
+        self.last_config = config
         yield from FAKE_RUN
 
-    def invoke(self, state):
+    def invoke(self, state, config=None):
+        self.last_config = config
         messages = [HumanMessage(content="q")]
         for update in FAKE_RUN:
             for payload in update.values():
@@ -47,18 +54,24 @@ class FakeAgent:
 
 @pytest.fixture
 def client(monkeypatch):
-    monkeypatch.setattr(api.lab, "travel_info_agent", FakeAgent())
-    # Bo qua lifespan (khong dung vector store that) bang cach goi thang TestClient
-    # voi app da patch: TestClient van chay lifespan -> patch luon ham nap kho.
+    fake_agent = FakeAgent()
+    # Bo qua lifespan (khong dung vector store/checkpointer that) bang cach patch
+    # truoc khi TestClient chay lifespan.
     monkeypatch.setattr(api.lab, "get_travel_info_vectorstore", lambda: None)
+    monkeypatch.setattr(api.lab, "build_agent", lambda checkpointer=None: fake_agent)
+    monkeypatch.setattr(api.persistence, "get_checkpointer", lambda: None)
+    monkeypatch.setattr(api.persistence, "backend_name", lambda: "in-memory")
     with TestClient(api.app) as test_client:
+        test_client.fake_agent = fake_agent
         yield test_client
 
 
 def test_healthz_reports_configuration(client):
     response = client.get("/healthz")
     assert response.status_code == 200
-    assert response.json()["status"] == "ok"
+    body = response.json()
+    assert body["status"] == "ok"
+    assert body["checkpointer_backend"] == "in-memory"
 
 
 def test_chat_returns_answer_and_tool_calls(client):
@@ -69,6 +82,21 @@ def test_chat_returns_answer_and_tool_calls(client):
     assert body["answer"] == "It is 21.7 C in St Ives."
     assert body["tool_calls"] == [{"name": "weather_forecast", "args": {"town": "St Ives"}}]
     assert body["elapsed_seconds"] >= 0
+    uuid.UUID(body["thread_id"])  # khong nem ValueError nghia la dung dinh dang
+
+
+def test_chat_reuses_given_thread_id(client):
+    thread_id = "0d1f7f2e-2222-4b3b-9c3c-111111111111"
+    client.post("/chat", json={"question": "weather in St Ives?", "thread_id": thread_id})
+    assert client.fake_agent.last_config == {"configurable": {"thread_id": thread_id}}
+
+
+def test_valid_thread_accepts_uuid_rejects_junk():
+    valid = "0d1f7f2e-2222-4b3b-9c3c-111111111111"
+    assert api._valid_thread(valid) == valid
+    assert api._valid_thread("admin") is None
+    assert api._valid_thread(None) is None
+    assert api._valid_thread("") is None
 
 
 def test_too_short_question_is_rejected_by_validation(client):
@@ -88,14 +116,34 @@ def test_stream_emits_events_in_order(client):
     assert '"name": "weather_forecast"' in response.text
 
 
-def test_stream_reports_errors_instead_of_crashing(client, monkeypatch):
+def test_stream_generates_thread_id_when_missing(client):
+    response = client.get("/chat/stream", params={"q": "weather in St Ives?"})
+
+    start_line = next(
+        line for line in response.text.splitlines() if line.startswith("data: ")
+    )
+    payload = json.loads(start_line[len("data: "):])
+    uuid.UUID(payload["thread_id"])
+    assert client.fake_agent.last_config == {
+        "configurable": {"thread_id": payload["thread_id"]}
+    }
+
+
+def test_stream_reuses_given_thread_id(client):
+    thread_id = "0d1f7f2e-2222-4b3b-9c3c-111111111111"
+    client.get("/chat/stream", params={"q": "weather in St Ives?", "thread": thread_id})
+
+    assert client.fake_agent.last_config == {"configurable": {"thread_id": thread_id}}
+
+
+def test_stream_reports_errors_instead_of_crashing(client):
     """Agent no giua chung: client phai nhan su kien 'error', khong phai ket noi dut."""
     class BoomAgent:
-        def stream(self, state, stream_mode=None):
+        def stream(self, state, config=None, stream_mode=None):
             raise RuntimeError("model unavailable")
             yield  # pragma: no cover - lam ham nay thanh generator
 
-    monkeypatch.setattr(api.lab, "travel_info_agent", BoomAgent())
+    client.app.state.agent = BoomAgent()
     response = client.get("/chat/stream", params={"q": "anything at all"})
 
     assert "event: error" in response.text
