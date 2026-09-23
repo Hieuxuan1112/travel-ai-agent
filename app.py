@@ -9,7 +9,7 @@ import os
 import time
 import uuid
 from collections import deque
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import streamlit as st
@@ -52,7 +52,9 @@ st.markdown(
     .cta-empty p { color: #A89E8E; margin-bottom: 18px; }
 
     /* --- sidebar (Trips) --- */
-    .cta-brand { font-family: 'Fraunces', serif; font-size: 1.15rem; font-weight: 600; margin-bottom: 10px; }
+    .cta-brand {
+        font-family: 'Fraunces', serif; font-size: 1.15rem; font-weight: 600; margin-bottom: 10px;
+    }
     .cta-sidebar-section {
         font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
         color: #A89E8E; margin: 14px 0 4px;
@@ -78,14 +80,22 @@ st.markdown(
         border: 1px solid #2A251D; border-radius: 14px; padding: 14px 16px; margin-bottom: 12px;
         background: linear-gradient(180deg, rgba(232,130,91,0.06), rgba(232,130,91,0) 65%);
     }
-    .cta-card-rank { color: #A89E8E; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; }
-    .cta-card-title { font-family: 'Fraunces', serif; font-size: 1.1rem; font-weight: 600; margin: 2px 0 8px; }
-    .cta-card-row { display: flex; gap: 14px; flex-wrap: wrap; font-size: 0.88rem; margin-bottom: 8px; }
+    .cta-card-rank {
+        color: #A89E8E; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    .cta-card-title {
+        font-family: 'Fraunces', serif; font-size: 1.1rem; font-weight: 600; margin: 2px 0 8px;
+    }
+    .cta-card-row {
+        display: flex; gap: 14px; flex-wrap: wrap; font-size: 0.88rem; margin-bottom: 8px;
+    }
     .cta-card-match { color: #E8825B; font-weight: 600; }
     .cta-card-check { color: #A89E8E; font-size: 0.82rem; margin: 2px 0; }
 
     /* --- single weather card --- */
-    .cta-weather-card { border: 1px solid #2A251D; border-radius: 14px; padding: 14px 16px; margin-bottom: 12px; }
+    .cta-weather-card {
+        border: 1px solid #2A251D; border-radius: 14px; padding: 14px 16px; margin-bottom: 12px;
+    }
     .cta-weather-temp { font-size: 1.5rem; font-weight: 600; font-family: 'Fraunces', serif; }
     .cta-weather-sub { color: #A89E8E; font-size: 0.85rem; }
 
@@ -275,7 +285,7 @@ def _thread_bucket(ts_iso: str) -> str:
         ts = datetime.fromisoformat(ts_iso.replace("Z", "+00:00"))
     except (ValueError, AttributeError):
         return "Older"
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(UTC).date()
     delta_days = (today - ts.date()).days
     if delta_days == 0:
         return "Today"
@@ -328,12 +338,15 @@ with st.sidebar:
             continue
         st.markdown(f'<div class="cta-sidebar-section">{bucket_name}</div>', unsafe_allow_html=True)
         for tid in tids:
-            if st.button(_thread_title(reference_agent, tid), key=f"trip-{tid}", use_container_width=True):
+            title = _thread_title(reference_agent, tid)
+            if st.button(title, key=f"trip-{tid}", use_container_width=True):
                 _switch_to_thread(tid)
                 st.rerun()
 
     if store_backend != "postgres":
-        st.caption("Trip history needs a persistent store (Postgres) - this session runs in-memory.")
+        st.caption(
+            "Trip history needs a persistent store (Postgres) - this session runs in-memory."
+        )
 
     with st.expander("⚙️ Settings"):
         agent_mode = st.radio(
@@ -389,7 +402,9 @@ def _safe_parse_tool_result(raw: str):
         return None
 
 
-def _render_recommendation_cards(container, ranked: list[dict], relaxed: bool, relax_reason: str | None) -> None:
+def _render_recommendation_cards(
+    container, ranked: list[dict], relaxed: bool, relax_reason: str | None
+) -> None:
     if not ranked:
         return
     if relaxed and relax_reason:
@@ -398,7 +413,8 @@ def _render_recommendation_cards(container, ranked: list[dict], relaxed: bool, r
         weather = cand.get("weather") or {}
         match_pct = round(cand.get("composite", 0) * 100)
         temp = weather.get("temperature")
-        temp_html = f"{temp}°C · {weather.get('weather', '')}" if temp is not None else "weather unavailable"
+        condition = weather.get("weather", "")
+        temp_html = f"{temp}°C · {condition}" if temp is not None else "weather unavailable"
         checks = []
         if cand.get("relevance", 0) >= 0.5:
             checks.append("Strong semantic match")
@@ -422,10 +438,12 @@ def _render_recommendation_cards(container, ranked: list[dict], relaxed: bool, r
 def _render_weather_card(container, weather: dict) -> None:
     if not weather or "error" in weather:
         return
+    condition = weather.get("weather", "")
+    town = weather.get("town", "")
     container.markdown(
         f'<div class="cta-weather-card">'
         f'<div class="cta-weather-temp">☀️ {weather.get("temperature")}°C</div>'
-        f'<div class="cta-weather-sub">{weather.get("weather", "")} · {weather.get("town", "")}</div>'
+        f'<div class="cta-weather-sub">{condition} · {town}</div>'
         f'<div class="cta-weather-sub">Wind {weather.get("wind_speed_kmh")} km/h · '
         f'Precipitation {weather.get("precipitation_mm")} mm</div>'
         f"</div>",
@@ -439,7 +457,8 @@ with chat_col:
     mode_short = "ReAct" if agent_mode == AGENT_MODES[0] else "Multi-agent"
     st.markdown(
         f'<div class="cta-topbar"><h1>🌴 Cornwall Travel Agent</h1>'
-        f'<div class="cta-meta">{mode_short}<span class="cta-dot">•</span>{lab.CHAT_MODEL}</div></div>',
+        f'<div class="cta-meta">{mode_short}<span class="cta-dot">•</span>'
+        f'{lab.CHAT_MODEL}</div></div>',
         unsafe_allow_html=True,
     )
 
@@ -493,9 +512,13 @@ with chat_col:
             color: #E8825B; font-family: Outfit, sans-serif; font-size: 14px; font-weight: 500;
             transition: background .15s ease, transform .15s ease;
           }
-          #mic-btn:hover:not(:disabled) { background: rgba(232,130,91,0.22); transform: translateY(-1px); }
+          #mic-btn:hover:not(:disabled) {
+            background: rgba(232,130,91,0.22); transform: translateY(-1px);
+          }
           #mic-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-          #mic-status { margin-left: 8px; color: #A89E8E; font-family: Outfit, sans-serif; font-size: 13px; }
+          #mic-status {
+            margin-left: 8px; color: #A89E8E; font-family: Outfit, sans-serif; font-size: 13px;
+          }
         </style>
         <div style="margin-bottom:8px">
           <button id="mic-btn">
@@ -579,9 +602,10 @@ with chat_col:
                                     )
                             elif isinstance(message, ToolMessage):
                                 parsed = _safe_parse_tool_result(str(message.content))
-                                if message.name == "rank_town_candidates" and isinstance(parsed, dict):
+                                is_dict = isinstance(parsed, dict)
+                                if message.name == "rank_town_candidates" and is_dict:
                                     turn_recs = parsed
-                                elif message.name == "weather_forecast" and isinstance(parsed, dict):
+                                elif message.name == "weather_forecast" and is_dict:
                                     turn_weather = parsed
                                 with st.expander(f"📄 result of `{message.name}`"):
                                     st.code(str(message.content)[:3000])
@@ -597,7 +621,8 @@ with chat_col:
             # invented): ranking wins over a bare weather lookup when both happened.
             if turn_recs and turn_recs.get("ranked"):
                 _render_recommendation_cards(
-                    st, turn_recs["ranked"], turn_recs.get("relaxed", False), turn_recs.get("relax_reason")
+                    st, turn_recs["ranked"], turn_recs.get("relaxed", False),
+                    turn_recs.get("relax_reason"),
                 )
                 st.session_state.last_recs = turn_recs
                 st.session_state.pop("last_weather", None)
