@@ -64,3 +64,29 @@ def backend_name() -> str:
     if _checkpointer is None:
         get_checkpointer()
     return _backend
+
+
+def list_recent_threads(limit: int = 8) -> list[tuple[str, str]]:
+    """[(thread_id, last_checkpoint_ts_iso), ...] moi nhat truoc, cho sidebar "Trips".
+
+    Chi co voi PostgresSaver (checkpoint co ban thread_id ben ngoai app process).
+    InMemorySaver tra [] - khong co gi de liet ke ngoai thread dang mo, va state
+    do se mat khi restart process nen liet ke cung khong co nghia.
+
+    ponytail: 1 truy van SQL tho thay vi mot API list-threads chinh thong (LangGraph
+    checkpointer khong co san cai do) - du la du cho sidebar 1 nguoi dung demo.
+    """
+    if _backend != "postgres" or _checkpointer is None:
+        return []
+    try:
+        # Dung lai _cursor() noi bo cua PostgresSaver (thay vi tu mo pool.connection())
+        # de an toan voi ca hai kieu Connection/ConnectionPool ma no tu xu ly.
+        with _checkpointer._cursor() as cur:
+            cur.execute(
+                "SELECT thread_id, MAX(checkpoint->>'ts') AS last_ts FROM checkpoints "
+                "WHERE checkpoint_ns = '' GROUP BY thread_id ORDER BY last_ts DESC LIMIT %s",
+                (limit,),
+            )
+            return [(row["thread_id"], row["last_ts"]) for row in cur.fetchall()]
+    except Exception:
+        return []
