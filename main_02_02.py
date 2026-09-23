@@ -1,10 +1,13 @@
 """
 Bai lab LLM - Chuong 11: Building tool-based agents with LangGraph
-Agent du lich Cornwall (UK) voi 2 TOOL:
+Agent du lich toan cau voi 5 TOOL:
   1) search_travel_info(query)  - tim thong tin diem den tu vector store (RAG)
   2) weather_forecast(town)     - thoi tiet THAT cua mot THANH PHO bat ky (Open-Meteo,
                                   khong can API key). Dat WEATHER_MODE=mock trong .env
                                   de quay ve ban gia lap cua sach (listing 11.10).
+  3) web_search(query)          - tim kiem web chung (DuckDuckGo HTML, khong can API key)
+  4) convert_currency(...)      - ty gia that (frankfurter.app, khong can API key)
+  5) translate_text(...)        - dich van ban (MyMemory API, khong can API key)
 
 Ban nay dung do thi LangGraph TU DUNG TAY (llm_node + tools node) de thay ro
 co che ReAct. Ban rut gon dung create_react_agent nam o main_03_01.py.
@@ -66,11 +69,16 @@ RETRIEVAL_MODE = os.environ.get("RETRIEVAL_MODE", "vector")
 # 11.1.3  VECTOR STORE - kho kien thuc du lich (nguon cho tool 1)
 # ===========================================================================
 
-UK_DESTINATIONS = [
-    "Cornwall",
-    "North_Cornwall",
-    "South_Cornwall",
-    "West_Cornwall",
+# Bo dai dien cac chau luc, khong phai toan bo Wikivoyage (~20,000 trang) - crawl/
+# embed het la khong thuc te cho mot demo, va cang nhieu trang thi chroma.sqlite3
+# cang nang (~25 trang la 170MB, vuot gioi han file 100MB cua GitHub). Chon 10
+# trang quoc gia/vung lon, du trai chau luc de RAG tra loi duoc nhieu diem den
+# pho bien, nhung van nho de commit thang vao repo nhu truoc (khong can Git LFS).
+TRAVEL_DESTINATIONS = [
+    "Cornwall", "United_Kingdom", "France", "Italy",
+    "Japan", "Thailand",
+    "United_States_of_America", "Brazil",
+    "Egypt", "Australia",
 ]
 
 embeddings = GoogleGenerativeAIEmbeddings(model=EMBED_MODEL)
@@ -117,7 +125,7 @@ def get_travel_info_vectorstore() -> Chroma:
             if not cached.get(limit=1)["ids"]:
                 print("Cached vector store is empty - rebuilding.")
                 cached = None
-        _ti_vectorstore_client = cached or build_vectorstore(UK_DESTINATIONS)
+        _ti_vectorstore_client = cached or build_vectorstore(TRAVEL_DESTINATIONS)
         print("Vector store ready.\n")
     return _ti_vectorstore_client
 
@@ -266,8 +274,8 @@ class OpenMeteoWeatherService:
 # Docstring / description chinh la thu LLM doc de quyet dinh goi tool nao.
 # ===========================================================================
 
-@tool(description="Search travel information about destinations in England. "
-                  "Use it to find towns, beaches, resorts and activities in Cornwall.")
+@tool(description="Search travel information about destinations anywhere in the world. "
+                  "Use it to find towns, cities, regions, beaches, resorts and activities.")
 def search_travel_info(query: str) -> str:
     """Search embedded Wikivoyage content for information about destinations."""
     if RETRIEVAL_MODE == "hybrid":
@@ -323,6 +331,90 @@ def weather_forecast(town: str, country: str = "") -> dict:
     if redis is not None:
         redis.set(cache_key, _json.dumps(forecast), ex=WEATHER_CACHE_TTL_SECONDS)
     return forecast
+
+
+HTTP_TIMEOUT_SECONDS = 8  # tra loi nguoi dung dang cho, khong phai cho API
+
+
+@tool(description="Search the general web for up-to-date information NOT covered by "
+                  "search_travel_info or weather_forecast - news, opening hours, prices, "
+                  "events, or any fact you don't already know. Returns titles, snippets "
+                  "and source URLs.")
+def web_search(query: str) -> str:
+    """DuckDuckGo HTML search - free, no API key."""
+    from bs4 import BeautifulSoup
+
+    try:
+        response = requests.post(
+            "https://html.duckduckgo.com/html/",
+            data={"q": query},
+            headers={"User-Agent": os.environ["USER_AGENT"]},
+            timeout=HTTP_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+    except Exception as exc:  # tool loi thi tra loi co cau truc de LLM tu xu ly
+        return f"web_search failed: {exc}"
+
+    soup = BeautifulSoup(response.text, "html.parser")
+    results = []
+    for block in soup.select(".result__body")[:5]:
+        title_el = block.select_one(".result__title")
+        if not title_el or not title_el.get_text(strip=True):
+            continue
+        snippet_el = block.select_one(".result__snippet")
+        url_el = block.select_one(".result__url")
+        results.append((
+            str(len(results)),
+            title_el.get_text(strip=True) + (
+                ": " + snippet_el.get_text(strip=True) if snippet_el else ""
+            ),
+            {"source": url_el.get_text(strip=True) if url_el else "duckduckgo.com"},
+        ))
+
+    return format_with_citations(results, source_label="web")
+
+
+@tool(description="Convert an amount from one currency to another using the current "
+                  "exchange rate. Use ISO 4217 codes, e.g. 'USD', 'EUR', 'JPY'.")
+def convert_currency(amount: float, from_currency: str, to_currency: str) -> dict:
+    """Live exchange rate via frankfurter.app (ECB reference rates) - free, no API key."""
+    try:
+        response = requests.get(
+            "https://api.frankfurter.app/latest",
+            params={"amount": amount, "from": from_currency.upper(), "to": to_currency.upper()},
+            timeout=HTTP_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        converted = payload["rates"][to_currency.upper()]
+    except Exception as exc:  # tool loi thi tra loi co cau truc de LLM tu xu ly
+        return {"error": f"Currency conversion failed for {from_currency} -> {to_currency}.",
+                "details": str(exc)}
+
+    return {
+        "amount": amount, "from": from_currency.upper(), "to": to_currency.upper(),
+        "converted": converted, "date": payload["date"], "source": "frankfurter.app",
+    }
+
+
+@tool(description="Translate text into another language. Pass 'target_lang' as an ISO "
+                  "639-1 code (e.g. 'vi', 'fr', 'ja') or a language name.")
+def translate_text(text: str, target_lang: str) -> dict:
+    """Translation via MyMemory API - free, no API key (rate-limited)."""
+    try:
+        response = requests.get(
+            "https://api.mymemory.translated.net/get",
+            params={"q": text, "langpair": f"en|{target_lang}"},
+            timeout=HTTP_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        translated = payload["responseData"]["translatedText"]
+    except Exception as exc:  # tool loi thi tra loi co cau truc de LLM tu xu ly
+        return {"error": f"Translation to '{target_lang}' failed.", "details": str(exc)}
+
+    return {"text": text, "target_lang": target_lang, "translated": translated,
+             "source": "mymemory.translated.net"}
 
 
 # ===========================================================================
@@ -449,7 +541,8 @@ def rank_town_candidates(
 
 
 # --- Listing 11.5 + 11.7.3: dang ky tool voi LLM ---------------------------
-TOOLS = [search_travel_info, weather_forecast, rank_town_candidates]
+TOOLS = [search_travel_info, weather_forecast, rank_town_candidates,
+         web_search, convert_currency, translate_text]
 
 llm_model = ChatGoogleGenerativeAI(model=CHAT_MODEL, temperature=0)
 llm_with_tools = llm_model.bind_tools(TOOLS)
@@ -529,7 +622,8 @@ tools_execution_node = ToolsExecutionNode(TOOLS)
 # ===========================================================================
 
 SYSTEM_PROMPT = """You are a helpful assistant that can search travel information
-and get the weather forecast. Only use the tools to find the information you need
+anywhere in the world, get the weather forecast, search the general web, convert
+currencies and translate text. Only use the tools to find the information you need
 (including town names). Never invent town names from your own knowledge.
 When you report weather, quote the actual figures the tool returned for each
 town (temperature, wind, precipitation) instead of summarising them

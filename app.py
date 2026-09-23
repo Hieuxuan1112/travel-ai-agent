@@ -495,68 +495,117 @@ with chat_col:
     # dependency moi). Chi Chrome/Edge co SpeechRecognition; Firefox/Safari thi
     # nut mic tu vo hieu hoa, phan con lai cua app khong doi.
     #
-    # ponytail: khong co cach chinh thong de mot iframe tinh tra gia tri ve
-    # Python ma khong full page reload (do can Streamlit.setComponentValue cua
-    # mot component that su). Nen dung lai chinh ky thuat ?thread=... da co san
-    # trong file nay: ghi ket qua nhan dien vao query param ?voice=..., Streamlit
-    # tu doc lai khi trang nap lai. Nang cap khi can UX muot hon: xay mot custom
-    # component that.
+    # st.iframe nhung raw HTML luon vao mot iframe sandbox KHONG co
+    # "allow-top-navigation" (Streamlit tu dat sandbox, khong cho tuy chinh).
+    # Ban dau code cu dung window.parent.location.href = ... de ghi query
+    # param ?voice=... roi nho Streamlit doc lai khi reload - nhung trinh
+    # duyet am tham chan moi lan dieu huong frame cha tu trong mot iframe bi
+    # sandbox nhu vay, nen no khong bao gio chay: nut mic mai ket ket "Listening ...".
+    # Fix: iframe co "allow-same-origin" nen script trong no van doc/ghi truc
+    # tiep len DOM cua trang cha (khong phai dieu huong) - bom transcript vao
+    # o st.chat_input roi gia lap phim Enter de submit, khong can reload trang.
+    #
+    # Dat NUT NAM TRONG THANH chat_input (kieu ChatGPT): st.chat_input la mot
+    # web component dong cua Streamlit, khong co "slot" chinh thong de chen nut
+    # vao ben trong. Cach lam: (1) CSS danh rieng padding-right cho textarea de
+    # chua cho, (2) chinh iframe cua nut mic thanh position:fixed, tu tinh toa
+    # do de "do" vao khoang trong do, canh chinh no moi khi bo cuc doi (mo/dong
+    # sidebar, resize). ponytail: dinh vi bang setInterval polling toa do thay
+    # vi ResizeObserver/MutationObserver day du - don gian hon nhieu, chi tra
+    # gia mot khoang tre <=300ms khi resize. Nang cap neu thay giat hinh.
     # -----------------------------------------------------------------------
+    st.markdown(
+        """
+        <style>
+          [data-testid="stChatInputTextArea"] { padding-right: 112px !important; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
     st.iframe(
         """
         <style>
-          body { margin: 0; background: transparent; }
+          html, body { margin: 0; background: transparent; overflow: hidden; }
           #mic-btn {
-            padding: 7px 16px; border-radius: 20px; cursor: pointer;
+            width: 100%; height: 100%; padding: 0 10px; border-radius: 16px; cursor: pointer;
             border: 1px solid rgba(232,130,91,0.4); background: rgba(232,130,91,0.12);
-            color: #E8825B; font-family: Outfit, sans-serif; font-size: 14px; font-weight: 500;
-            transition: background .15s ease, transform .15s ease;
+            color: #E8825B; font-family: Outfit, sans-serif; font-size: 12px; font-weight: 500;
+            white-space: nowrap; transition: background .15s ease;
           }
-          #mic-btn:hover:not(:disabled) {
-            background: rgba(232,130,91,0.22); transform: translateY(-1px);
-          }
+          #mic-btn:hover:not(:disabled) { background: rgba(232,130,91,0.22); }
           #mic-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-          #mic-status {
-            margin-left: 8px; color: #A89E8E; font-family: Outfit, sans-serif; font-size: 13px;
-          }
+          #mic-btn.listening { background: rgba(232,130,91,0.3); }
         </style>
-        <div style="margin-bottom:8px">
-          <button id="mic-btn">
-            🎤 Speak your question
-          </button>
-          <span id="mic-status"></span>
-        </div>
+        <button id="mic-btn">🎤 Speak</button>
         <script>
         const btn = document.getElementById("mic-btn");
-        const status = document.getElementById("mic-status");
+        const IDLE_LABEL = "🎤 Speak";
         const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SR) {
-          status.textContent = "Not supported in this browser - try Chrome or Edge.";
+          btn.textContent = "🎤 N/A";
+          btn.title = "Voice input needs Chrome or Edge.";
           btn.disabled = true;
         } else {
           const recognition = new SR();
           recognition.lang = "en-US";
           recognition.interimResults = false;
-          btn.onclick = () => { status.textContent = "Listening ..."; recognition.start(); };
+          btn.onclick = () => {
+            btn.textContent = "🔴 Listening";
+            btn.classList.add("listening");
+            recognition.start();
+          };
           recognition.onresult = (event) => {
             const transcript = event.results[0][0].transcript;
-            const url = new URL(window.parent.location.href);
-            url.searchParams.set("voice", transcript);
-            window.parent.location.href = url.toString();
+            const pwin = window.parent;
+            const ta = pwin.document.querySelector('[data-testid="stChatInputTextArea"]');
+            if (ta) {
+              const proto = pwin.HTMLTextAreaElement.prototype;
+              const setter = Object.getOwnPropertyDescriptor(proto, "value").set;
+              setter.call(ta, transcript);
+              ta.dispatchEvent(new pwin.Event("input", { bubbles: true }));
+              ta.focus();
+              ta.dispatchEvent(new pwin.KeyboardEvent("keydown", {
+                bubbles: true, key: "Enter", code: "Enter", keyCode: 13, which: 13,
+              }));
+            }
           };
-          recognition.onerror = (event) => { status.textContent = "Error: " + event.error; };
+          recognition.onerror = (event) => { btn.title = "Error: " + event.error; };
+          recognition.onend = () => {
+            btn.textContent = IDLE_LABEL;
+            btn.classList.remove("listening");
+          };
         }
+
+        // Tu "do" iframe nay vao khoang padding-right cua chat_input, ngay
+        // truoc nut Send - xem giai thich o comment Python phia tren.
+        function positionOverChatInput() {
+          const pwin = window.parent;
+          const myFrame = [...pwin.document.querySelectorAll("iframe")]
+            .find((f) => f.contentWindow === window);
+          const ta = pwin.document.querySelector('[data-testid="stChatInputTextArea"]');
+          const sendBtn = pwin.document.querySelector('[data-testid="stChatInputSubmitButton"]');
+          if (!myFrame || !ta) return;
+          const taRect = ta.getBoundingClientRect();
+          const rightEdge = sendBtn ? sendBtn.getBoundingClientRect().left - 6 : taRect.right;
+          Object.assign(myFrame.style, {
+            position: "fixed",
+            top: taRect.top + "px",
+            left: (rightEdge - 92) + "px",
+            width: "92px",
+            height: Math.max(taRect.height, 28) + "px",
+            zIndex: 999,
+            border: "0",
+          });
+        }
+        positionOverChatInput();
+        setInterval(positionOverChatInput, 300);
         </script>
         """,
-        height=45,
+        height=1,
     )
 
-    voice_prompt = st.query_params.get("voice")
-    if voice_prompt:
-        del st.query_params["voice"]  # xu ly mot lan, khong lap lai o lan rerun sau
-
     if prompt := (st.chat_input("e.g. Suggest two Cornwall beach towns with nice weather")
-                  or voice_prompt or chip_prompt):
+                  or chip_prompt):
         refusal = check_budget()
         if refusal:
             st.warning(refusal)

@@ -552,7 +552,7 @@ if os.path.isdir(PERSIST_DIR):
     if not cached.get(limit=1)["ids"]:
         print("Cached vector store is empty - rebuilding.")
         cached = None
-_ti_vectorstore_client = cached or build_vectorstore(UK_DESTINATIONS)
+_ti_vectorstore_client = cached or build_vectorstore(TRAVEL_DESTINATIONS)
 ```
 
 Dòng kiểm tra `if not cached.get(limit=1)["ids"]` trông thừa, nhưng nó sinh ra từ một lỗi

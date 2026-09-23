@@ -15,18 +15,21 @@ from mcp.server.fastmcp import FastMCP
 # Giao thuc MCP tren stdio dung stdout de truyen JSON-RPC -> moi dong print lac vao
 # stdout se lam hong ket noi. Vi vay nuot toan bo log luc import sang stderr.
 with contextlib.redirect_stdout(sys.stderr):
+    from main_02_02 import convert_currency as _currency_tool
     from main_02_02 import rank_town_candidates as _rank_tool
     from main_02_02 import search_travel_info as _search_tool
+    from main_02_02 import translate_text as _translate_tool
     from main_02_02 import weather_forecast as _weather_tool
+    from main_02_02 import web_search as _web_search_tool
 
 mcp = FastMCP("cornwall-travel")
 
 
 @mcp.tool()
 def search_travel_info(query: str) -> str:
-    """Search travel information about destinations in England.
+    """Search travel information about destinations anywhere in the world.
 
-    Use it to find towns, beaches, resorts and activities in Cornwall.
+    Use it to find towns, cities, regions, beaches, resorts and activities.
     """
     return _search_tool.invoke({"query": query})
 
@@ -62,6 +65,26 @@ def rank_town_candidates(
         "min_weather_fit": min_weather_fit,
         "top_n": top_n,
     })
+
+
+@mcp.tool()
+def web_search(query: str) -> str:
+    """Search the general web for information not covered by the other tools."""
+    return _web_search_tool.invoke({"query": query})
+
+
+@mcp.tool()
+def convert_currency(amount: float, from_currency: str, to_currency: str) -> dict:
+    """Convert an amount between currencies using the current exchange rate."""
+    return _currency_tool.invoke({
+        "amount": amount, "from_currency": from_currency, "to_currency": to_currency,
+    })
+
+
+@mcp.tool()
+def translate_text(text: str, target_lang: str) -> dict:
+    """Translate text into another language (ISO 639-1 code or language name)."""
+    return _translate_tool.invoke({"text": text, "target_lang": target_lang})
 
 
 if __name__ == "__main__":
