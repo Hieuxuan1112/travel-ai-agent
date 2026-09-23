@@ -31,3 +31,6 @@ prometheus-client==0.24.1
 # Rate-limit store + weather cache dung chung nhieu instance (redis_client.py).
 # Khong dat REDIS_URL thi khong dung toi - tu lui ve bo dem trong tien trinh.
 redis==8.1.0
+
+# Gemini TTS that cho cau tra loi (tts.py, app.py). Tra phi qua GOOGLE_API_KEY.
+google-genai==2.17.0

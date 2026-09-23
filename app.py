@@ -3,6 +3,7 @@
 Chay:  venv\\Scripts\\streamlit.exe run app.py
 """
 
+import json
 import os
 import time
 import uuid
@@ -11,6 +12,8 @@ from pathlib import Path
 
 import streamlit as st
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+
+import tts
 
 st.set_page_config(page_title="Cornwall Travel Agent", page_icon="🏖️", layout="centered")
 
@@ -205,7 +208,57 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-if prompt := st.chat_input("e.g. Suggest two Cornwall beach towns with nice weather"):
+# ---------------------------------------------------------------------------
+# GIONG NOI (Web Speech API cua trinh duyet - khong key, khong phi, khong
+# dependency moi). Chi Chrome/Edge co SpeechRecognition; Firefox/Safari thi
+# nut mic tu vo hieu hoa, phan con lai cua app khong doi.
+#
+# ponytail: khong co cach chinh thong de mot iframe tinh tra gia tri ve Python
+# ma khong full page reload (do can Streamlit.setComponentValue cua mot
+# component that su). Nen dung lai chinh ky thuat ?thread=... da co san trong
+# file nay: ghi ket qua nhan dien vao query param ?voice=..., Streamlit tu doc
+# lai khi trang nap lai. Nang cap khi can UX muot hon: xay mot custom component
+# that.
+# ---------------------------------------------------------------------------
+st.iframe(
+    """
+    <div style="margin-bottom:8px">
+      <button id="mic-btn" style="padding:6px 14px;border-radius:6px;cursor:pointer">
+        🎤 Speak your question
+      </button>
+      <span id="mic-status" style="margin-left:8px;color:#888;font-size:13px"></span>
+    </div>
+    <script>
+    const btn = document.getElementById("mic-btn");
+    const status = document.getElementById("mic-status");
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      status.textContent = "Not supported in this browser - try Chrome or Edge.";
+      btn.disabled = true;
+    } else {
+      const recognition = new SR();
+      recognition.lang = "en-US";
+      recognition.interimResults = false;
+      btn.onclick = () => { status.textContent = "Listening ..."; recognition.start(); };
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        const url = new URL(window.parent.location.href);
+        url.searchParams.set("voice", transcript);
+        window.parent.location.href = url.toString();
+      };
+      recognition.onerror = (event) => { status.textContent = "Error: " + event.error; };
+    }
+    </script>
+    """,
+    height=45,
+)
+
+voice_prompt = st.query_params.get("voice")
+if voice_prompt:
+    del st.query_params["voice"]  # xu ly mot lan, khong lap lai o lan rerun sau
+
+if prompt := (st.chat_input("e.g. Suggest two Cornwall beach towns with nice weather")
+              or voice_prompt):
     refusal = check_budget()
     if refusal:
         st.warning(refusal)
@@ -253,5 +306,21 @@ if prompt := st.chat_input("e.g. Suggest two Cornwall beach towns with nice weat
         trace_box.caption(
             f"{tool_calls} tool call(s) · {time.time() - started:.1f}s · model {lab.CHAT_MODEL}"
         )
+        if final_answer:
+            # Doc bang giong Gemini TTS that (tra phi qua GOOGLE_API_KEY) - chat
+            # luong tot hon han giong may cua trinh duyet. Goi mang that bai
+            # (het quota, mang hong...) thi tts.synthesize() tra None, lui ve
+            # speechSynthesis mien phi cua trinh duyet de nguoi dung van nghe
+            # duoc cau tra loi, chi la giong kem hon.
+            audio_bytes = tts.synthesize(final_answer)
+            if audio_bytes:
+                st.audio(audio_bytes, format="audio/wav", autoplay=True)
+            else:
+                st.iframe(
+                    f"<script>speechSynthesis.cancel();"
+                    f"speechSynthesis.speak(new SpeechSynthesisUtterance("
+                    f"{json.dumps(final_answer)}));</script>",
+                    height=1,
+                )
 
     st.session_state.messages.append({"role": "assistant", "content": final_answer})
