@@ -16,6 +16,7 @@ Giai thich chi tiet tung khai niem: docs/HOC_FASTAPI_SSE.md
 import json
 import os
 import time
+import uuid
 from collections import defaultdict, deque
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
@@ -29,7 +30,24 @@ from pydantic import BaseModel, Field
 
 import main_02_02 as lab
 import metrics
+import persistence
 import redis_client
+
+
+def _valid_thread(raw: str | None) -> str | None:
+    """Chi nhan dung dinh dang UUID.
+
+    Cung ly do voi _valid_thread trong app.py: thread_id di thang vao khoa
+    doc/ghi cua checkpointer, khong kiem tra thi khong gian khoa tu 122 bit
+    ngau nhien thanh chuoi tuy y doan duoc (?thread_id=admin).
+    """
+    if not raw:
+        return None
+    try:
+        return str(uuid.UUID(raw))
+    except ValueError:
+        return None
+
 
 # ===========================================================================
 # 1. VONG DOI UNG DUNG (lifespan)
@@ -41,7 +59,12 @@ import redis_client
 async def lifespan(app: FastAPI):
     print("Warming up the vector store ...")
     lab.get_travel_info_vectorstore()
-    print("API ready.")
+    # Cung mot checkpointer voi app.py (Postgres neu co DATABASE_URL, khong thi
+    # in-memory) -> /chat va /chat/stream nho hoi thoai qua thread_id giong het
+    # Streamlit, thay vi coi moi cau hoi la mot cuoc hoi thoai moi.
+    app.state.agent = lab.build_agent(persistence.get_checkpointer())
+    app.state.checkpointer_backend = persistence.backend_name()
+    print(f"API ready. Checkpointer backend: {app.state.checkpointer_backend}")
     yield
     print("API shutting down.")
 
@@ -225,6 +248,11 @@ class ChatRequest(BaseModel):
         description="Cau hoi cua nguoi dung",
         examples=["Suggest two Cornwall beach towns with nice weather"],
     )
+    thread_id: str | None = Field(
+        default=None,
+        description="Continue a previous conversation. Omit to start a new one - the "
+                    "response always echoes the thread_id to reuse for the next call.",
+    )
 
 
 class ToolCallInfo(BaseModel):
@@ -237,6 +265,7 @@ class ChatResponse(BaseModel):
     tool_calls: list[ToolCallInfo]
     elapsed_seconds: float
     model: str
+    thread_id: str
 
 
 # ===========================================================================
@@ -244,9 +273,14 @@ class ChatResponse(BaseModel):
 # ===========================================================================
 
 @app.get("/healthz", tags=["system"])
-def healthz() -> dict:
+def healthz(request: Request) -> dict:
     """Song hay chet. Cloud Run / Kubernetes goi lien tuc vao day de biet."""
-    return {"status": "ok", "model": lab.CHAT_MODEL, "weather_source": lab.WEATHER_MODE}
+    return {
+        "status": "ok",
+        "model": lab.CHAT_MODEL,
+        "weather_source": lab.WEATHER_MODE,
+        "checkpointer_backend": request.app.state.checkpointer_backend,
+    }
 
 
 @app.get("/metrics", tags=["system"], include_in_schema=False)
@@ -268,17 +302,19 @@ def prometheus_metrics() -> PlainTextResponse:
         Depends(require_api_key), Depends(require_ai_enabled), Depends(enforce_rate_limit),
     ],
 )
-def chat(request: ChatRequest) -> ChatResponse:
+def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
     """Hoi mot cau, doi agent lam xong, tra ve mot cuc JSON.
 
     Don gian nhung nguoi dung phai nhin man hinh trong ~15 giay ma khong biet
     chuyen gi dang xay ra -> vi vay moi co /chat/stream ben duoi.
     """
+    thread_id = _valid_thread(request.thread_id) or str(uuid.uuid4())
+    config = {"configurable": {"thread_id": thread_id}}
     started = time.time()
     metrics.IN_FLIGHT.inc()
     try:
-        result = lab.travel_info_agent.invoke(
-            {"messages": [HumanMessage(content=request.question)]}
+        result = http_request.app.state.agent.invoke(
+            {"messages": [HumanMessage(content=request.question)]}, config=config
         )
     except Exception:
         metrics.REQUESTS.labels(endpoint="/chat", status="error").inc()
@@ -300,6 +336,7 @@ def chat(request: ChatRequest) -> ChatResponse:
         tool_calls=tool_calls,
         elapsed_seconds=round(time.time() - started, 2),
         model=lab.CHAT_MODEL,
+        thread_id=thread_id,
     )
 
 
@@ -317,21 +354,24 @@ def sse(event: str, payload: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
-def agent_events(question: str) -> Iterator[str]:
+def agent_events(agent, question: str, thread_id: str) -> Iterator[str]:
     """Generator: moi lan 'yield' la mot mieng du lieu day ngay ra cho client.
 
     Ham nay la trai tim cua SSE. LangGraph cho stream_mode='updates' -> cu mot
     node trong do thi chay xong thi tra ve ket qua node do, ta doi thanh su kien.
     """
+    config = {"configurable": {"thread_id": thread_id}}
     started = time.time()
     tool_calls = 0
     status = "error"
     metrics.IN_FLIGHT.inc()
-    yield sse("start", {"question": question, "model": lab.CHAT_MODEL})
+    yield sse("start", {"question": question, "model": lab.CHAT_MODEL, "thread_id": thread_id})
 
     try:
-        for update in lab.travel_info_agent.stream(
-            {"messages": [HumanMessage(content=question)]}, stream_mode="updates"
+        for update in agent.stream(
+            {"messages": [HumanMessage(content=question)]},
+            config=config,
+            stream_mode="updates",
         ):
             for payload in update.values():
                 for message in payload.get("messages", []):
@@ -371,13 +411,18 @@ def agent_events(question: str) -> Iterator[str]:
         Depends(require_api_key), Depends(require_ai_enabled), Depends(enforce_rate_limit),
     ],
 )
-def chat_stream(q: str = Query(min_length=3, max_length=500, description="Cau hoi")):
+def chat_stream(
+    http_request: Request,
+    q: str = Query(min_length=3, max_length=500, description="Cau hoi"),
+    thread: str | None = Query(default=None, description="thread_id de tiep tuc hoi thoai cu"),
+):
     """Hoi mot cau, nhan tung su kien ngay khi agent lam - khong phai cho het 15 giay.
 
     Dung GET (khong phai POST) vi EventSource cua trinh duyet chi goi duoc GET.
     """
+    thread_id = _valid_thread(thread) or str(uuid.uuid4())
     return StreamingResponse(
-        agent_events(q),
+        agent_events(http_request.app.state.agent, q, thread_id),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",   # cam proxy cache lai luong

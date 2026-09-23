@@ -24,7 +24,9 @@ def client(monkeypatch):
     fake = fakeredis.FakeRedis()
     monkeypatch.setattr(redis_client, "_client", fake)
     monkeypatch.setattr(redis_client, "_checked", True)
-    monkeypatch.setattr(api.lab, "travel_info_agent", FakeAgent())
+    monkeypatch.setattr(api.lab, "build_agent", lambda checkpointer=None: FakeAgent())
+    monkeypatch.setattr(api.persistence, "get_checkpointer", lambda: None)
+    monkeypatch.setattr(api.persistence, "backend_name", lambda: "in-memory")
     monkeypatch.setattr(api.lab, "get_travel_info_vectorstore", lambda: None)
     monkeypatch.setattr(api, "RATE_LIMIT_PER_HOUR", 3)
     with TestClient(api.app) as test_client:
