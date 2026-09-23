@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ.setdefault("GOOGLE_API_KEY", "test-key-not-used")
 
 import api  # noqa: E402
+import thread_ownership  # noqa: E402
 from tests.test_api import FakeAgent  # noqa: E402
 
 
@@ -27,8 +28,10 @@ def client(monkeypatch):
     monkeypatch.setattr(api.persistence, "get_checkpointer", lambda: None)
     monkeypatch.setattr(api.persistence, "backend_name", lambda: "in-memory")
     monkeypatch.setattr(api.lab, "get_travel_info_vectorstore", lambda: None)
+    thread_ownership.reset_for_tests()
     with TestClient(api.app) as test_client:
         yield test_client
+    thread_ownership.reset_for_tests()
 
 
 def test_chat_is_public_when_api_keys_not_configured(client, monkeypatch):
@@ -93,6 +96,47 @@ def test_wrong_key_attempts_still_consume_rate_limit(client, monkeypatch):
         assert response.status_code == 429
     finally:
         api._hits.clear()
+
+
+def test_second_key_cannot_continue_first_keys_thread(client, monkeypatch):
+    monkeypatch.setattr(api, "API_KEYS", {"key-a", "key-b"})
+    thread_id = "0d1f7f2e-2222-4b3b-9c3c-111111111111"
+
+    first = client.post(
+        "/chat", json={"question": "weather in St Ives?", "thread_id": thread_id},
+        headers={"X-API-Key": "key-a"},
+    )
+    assert first.status_code == 200
+
+    second = client.post(
+        "/chat", json={"question": "and now?", "thread_id": thread_id},
+        headers={"X-API-Key": "key-b"},
+    )
+    assert second.status_code == 403
+
+
+def test_owning_key_can_keep_using_its_own_thread(client, monkeypatch):
+    monkeypatch.setattr(api, "API_KEYS", {"key-a"})
+    thread_id = "0d1f7f2e-2222-4b3b-9c3c-111111111111"
+
+    for _ in range(2):
+        response = client.post(
+            "/chat", json={"question": "weather in St Ives?", "thread_id": thread_id},
+            headers={"X-API-Key": "key-a"},
+        )
+        assert response.status_code == 200
+
+
+def test_thread_ownership_is_a_noop_when_api_keys_not_configured(client, monkeypatch):
+    monkeypatch.setattr(api, "API_KEYS", set())
+    thread_id = "0d1f7f2e-2222-4b3b-9c3c-111111111111"
+
+    for key in ("", "anything", "something-else"):
+        response = client.post(
+            "/chat", json={"question": "weather in St Ives?", "thread_id": thread_id},
+            headers={"X-API-Key": key} if key else {},
+        )
+        assert response.status_code == 200
 
 
 def test_stream_endpoint_also_requires_the_key_when_configured(client, monkeypatch):

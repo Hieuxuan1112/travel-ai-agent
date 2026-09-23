@@ -32,6 +32,7 @@ import main_02_02 as lab
 import metrics
 import persistence
 import redis_client
+import thread_ownership
 
 
 def _valid_thread(raw: str | None) -> str | None:
@@ -151,6 +152,21 @@ def require_api_key(x_api_key: str = Header(default="")) -> None:
             status_code=401,
             detail="Missing or invalid API key. Pass a valid key in the X-API-Key header.",
             headers={"WWW-Authenticate": "API-Key"},
+        )
+
+
+def enforce_thread_access(thread_id: str, x_api_key: str) -> None:
+    """Khoa thread_id theo API key (xem thread_ownership.py).
+
+    Chi kiem tra khi API_KEYS duoc cau hinh - demo cong khai (API_KEYS rong)
+    khong co danh tinh nao de khoa theo, hanh vi giu nguyen nhu truoc.
+    """
+    if not API_KEYS:
+        return
+    if not thread_ownership.check_and_claim(thread_id, x_api_key):
+        raise HTTPException(
+            status_code=403,
+            detail="This thread_id belongs to a different API key.",
         )
 
 
@@ -328,13 +344,16 @@ def prometheus_metrics() -> PlainTextResponse:
         Depends(enforce_rate_limit), Depends(require_api_key), Depends(require_ai_enabled),
     ],
 )
-def chat(request: ChatRequest, http_request: Request) -> ChatResponse:
+def chat(
+    request: ChatRequest, http_request: Request, x_api_key: str = Header(default=""),
+) -> ChatResponse:
     """Hoi mot cau, doi agent lam xong, tra ve mot cuc JSON.
 
     Don gian nhung nguoi dung phai nhin man hinh trong ~15 giay ma khong biet
     chuyen gi dang xay ra -> vi vay moi co /chat/stream ben duoi.
     """
     thread_id = _valid_thread(request.thread_id) or str(uuid.uuid4())
+    enforce_thread_access(thread_id, x_api_key)
     config = {"configurable": {"thread_id": thread_id}}
     started = time.time()
     metrics.IN_FLIGHT.inc()
@@ -441,12 +460,14 @@ def chat_stream(
     http_request: Request,
     q: str = Query(min_length=3, max_length=500, description="Cau hoi"),
     thread: str | None = Query(default=None, description="thread_id de tiep tuc hoi thoai cu"),
+    x_api_key: str = Header(default=""),
 ):
     """Hoi mot cau, nhan tung su kien ngay khi agent lam - khong phai cho het 15 giay.
 
     Dung GET (khong phai POST) vi EventSource cua trinh duyet chi goi duoc GET.
     """
     thread_id = _valid_thread(thread) or str(uuid.uuid4())
+    enforce_thread_access(thread_id, x_api_key)
     return StreamingResponse(
         agent_events(http_request.app.state.agent, q, thread_id),
         media_type="text/event-stream",
