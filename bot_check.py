@@ -13,14 +13,24 @@ import os
 
 import requests
 
-TURNSTILE_SITE_KEY = os.environ.get("TURNSTILE_SITE_KEY", "").strip()
-TURNSTILE_SECRET_KEY = os.environ.get("TURNSTILE_SECRET_KEY", "").strip()
-
 _VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+
+# ponytail: doc os.environ BEN TRONG ham (khong phai o dau module) vi app.py
+# import bot_check truoc khi main_02_02.load_dotenv() kip chay - doc o dau
+# module se luon thay bien rong du .env co dien gi di nua. redis_client.py
+# cung tranh loi nay theo dung cach nay (xem get_redis()).
+
+
+def site_key() -> str:
+    return os.environ.get("TURNSTILE_SITE_KEY", "").strip()
+
+
+def _secret_key() -> str:
+    return os.environ.get("TURNSTILE_SECRET_KEY", "").strip()
 
 
 def is_enabled() -> bool:
-    return bool(TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY)
+    return bool(site_key() and _secret_key())
 
 
 def verify(token: str) -> bool:
@@ -35,7 +45,7 @@ def verify(token: str) -> bool:
     try:
         response = requests.post(
             _VERIFY_URL,
-            data={"secret": TURNSTILE_SECRET_KEY, "response": token},
+            data={"secret": _secret_key(), "response": token},
             timeout=5,
         )
         return bool(response.json().get("success"))

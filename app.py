@@ -229,7 +229,7 @@ if bot_check.is_enabled() and not st.session_state.get("bot_verified"):
     st.iframe(
         f"""
         <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
-        <div class="cf-turnstile" data-sitekey="{bot_check.TURNSTILE_SITE_KEY}"
+        <div class="cf-turnstile" data-sitekey="{bot_check.site_key()}"
              data-callback="onTurnstileVerified"></div>
         <script>
         function onTurnstileVerified(token) {{

@@ -19,13 +19,13 @@ class _FakeResponse:
 
 
 def _enable(monkeypatch):
-    monkeypatch.setattr(bot_check, "TURNSTILE_SITE_KEY", "site-key")
-    monkeypatch.setattr(bot_check, "TURNSTILE_SECRET_KEY", "secret-key")
+    monkeypatch.setenv("TURNSTILE_SITE_KEY", "site-key")
+    monkeypatch.setenv("TURNSTILE_SECRET_KEY", "secret-key")
 
 
 def test_disabled_when_keys_not_configured(monkeypatch):
-    monkeypatch.setattr(bot_check, "TURNSTILE_SITE_KEY", "")
-    monkeypatch.setattr(bot_check, "TURNSTILE_SECRET_KEY", "")
+    monkeypatch.delenv("TURNSTILE_SITE_KEY", raising=False)
+    monkeypatch.delenv("TURNSTILE_SECRET_KEY", raising=False)
     assert bot_check.is_enabled() is False
     assert bot_check.verify("") is True  # tat tinh nang -> luon cho qua
 
