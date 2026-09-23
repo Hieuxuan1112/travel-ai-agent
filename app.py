@@ -13,6 +13,7 @@ from pathlib import Path
 import streamlit as st
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
+import bot_check
 import tts
 
 st.set_page_config(page_title="Cornwall Travel Agent", page_icon="🏖️", layout="centered")
@@ -207,6 +208,40 @@ if "messages" not in st.session_state:
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
+
+# ---------------------------------------------------------------------------
+# CHAN BOT (Cloudflare Turnstile, mien phi, hang muc #13) - xac minh MOT LAN
+# moi phien chu khong phai moi cau hoi (token Turnstile dung mot lan, het han
+# sau vai phut - bat xac minh lai lien tuc se rat kho chiu). Tat hoan toan
+# neu khong dat TURNSTILE_SITE_KEY/TURNSTILE_SECRET_KEY - cung triet ly voi
+# REDIS_URL/DATABASE_URL, khong bat buoc phai co tai khoan Cloudflare moi
+# clone repo ve chay thu duoc.
+# ---------------------------------------------------------------------------
+if bot_check.is_enabled() and not st.session_state.get("bot_verified"):
+    turnstile_token = st.query_params.get("turnstile")
+    if turnstile_token:
+        del st.query_params["turnstile"]
+        if bot_check.verify(turnstile_token):
+            st.session_state.bot_verified = True
+
+if bot_check.is_enabled() and not st.session_state.get("bot_verified"):
+    st.info("Please complete the check below before chatting.")
+    st.iframe(
+        f"""
+        <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+        <div class="cf-turnstile" data-sitekey="{bot_check.TURNSTILE_SITE_KEY}"
+             data-callback="onTurnstileVerified"></div>
+        <script>
+        function onTurnstileVerified(token) {{
+          const url = new URL(window.parent.location.href);
+          url.searchParams.set("turnstile", token);
+          window.parent.location.href = url.toString();
+        }}
+        </script>
+        """,
+        height=80,
+    )
+    st.stop()
 
 # ---------------------------------------------------------------------------
 # GIONG NOI (Web Speech API cua trinh duyet - khong key, khong phi, khong
