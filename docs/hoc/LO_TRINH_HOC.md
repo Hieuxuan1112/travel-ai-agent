@@ -44,9 +44,11 @@ Bảng quan trọng nhất tài liệu. Cột phải chỉ bạn tới mục c�
 | E-commerce classification | MRR ≈ 0,60, TF-IDF + Logistic Regression | MRR, TF-IDF, đánh giá xếp hạng | P1, P3, P6 |
 | Bilingual retrieval | 3s → 0,4s, LaBSE, hybrid rerank | embedding, SBERT, vector search, reranking | P2, P3 |
 | Han-Nom corpus (luận văn) | 55K bài → 10K mẫu, 98,2% | đo chất lượng nhãn, thiết kế cổng xác thực | P1 |
-| Multi-tool AI Agent | 100% tool-selection (8 case eval) | ReAct, tool calling, RAG, eval, p95 | P1, P2, P3 |
+| Multi-tool AI Agent | 100% tool-selection (32 case eval), 4,6/5 quality, $0,94/1000 câu | ReAct, tool calling, RAG, eval, p95 | P1, P2, P3 |
 | Prometheus, cost/query | $0,0007/câu | token, tokenizer, đo lường | P6 |
-| Docker, FastAPI, CI | 81 test | đã vững — chỉ cần nói rõ | [MENTOR.md](MENTOR.md) |
+| Docker, FastAPI, CI | 141 test | đã vững — chỉ cần nói rõ | [MENTOR.md](MENTOR.md) |
+| Multi-agent (planner+executor) | LangGraph subgraph, tái sử dụng nguyên graph ReAct | subgraph, structured output, state schema | [HOC_AGENT_PATTERNS.md](HOC_AGENT_PATTERNS.md) |
+| Load test | 137 req/s baseline (p95 39ms); p95 7,6s cho `/chat` thật | Locust, I/O-bound vs CPU-bound | [HOC_VAN_HANH_THAT.md](HOC_VAN_HANH_THAT.md) |
 | Lưu hội thoại bền | checkpointer trên PostgreSQL | thread state, trim context | [HOC_LANGGRAPH.md](HOC_LANGGRAPH.md) |
 | CD: Trivy, GHCR | quét trước khi đẩy, tag theo SHA | chuỗi cung ứng phần mềm | [HOC_CICD_CLOUD.md](HOC_CICD_CLOUD.md) |
 | Azure Container Apps | keyless OIDC, scale-to-zero, $0 | federated credential, quyền tối thiểu | [HOC_CICD_CLOUD.md](HOC_CICD_CLOUD.md) |
@@ -902,12 +904,13 @@ dự án này" mà không lan man.
 **Multi-tool AI Agent**
 
 > *"Đây là một agent theo mẫu ReAct: mô hình tự quyết định gọi công cụ nào và theo thứ tự
-> nào, không có bước nào được lập trình cứng. Nó có hai công cụ — tìm kiếm ngữ nghĩa trên
-> kho Wikivoyage và tra thời tiết thật. Tôi dựng đồ thị LangGraph bằng tay để hiểu cơ chế,
-> rồi làm lại bằng component dựng sẵn để đối chiếu. Phần phục vụ là FastAPI có streaming
-> SSE, đóng gói Docker multi-stage chạy non-root, và đo bằng Prometheus. Tôi đánh giá nó
-> bằng một bộ eval 8 câu: 100% chọn đúng công cụ, kèm điểm chất lượng do LLM chấm,
-> chi phí khoảng 0,0007 đô mỗi câu hỏi."*
+> nào, không có bước nào được lập trình cứng. Nó có ba công cụ — tìm kiếm ngữ nghĩa trên
+> kho Wikivoyage, tra thời tiết thật, và xếp hạng thị trấn bằng công thức tường minh thay vì
+> để LLM tự đoán. Tôi dựng đồ thị LangGraph bằng tay để hiểu cơ chế, rồi làm lại bằng
+> component dựng sẵn, và có thêm một biến thể multi-agent để đối chiếu. Phần phục vụ là
+> FastAPI có streaming SSE, đóng gói Docker chạy non-root, đo bằng Prometheus. Tôi đánh giá
+> nó bằng một bộ eval 32 câu: 100% chọn đúng công cụ, 4,6/5 chất lượng do LLM chấm, chi phí
+> khoảng $0,94/1000 câu."*
 
 **Han-Nom corpus (luận văn)**
 

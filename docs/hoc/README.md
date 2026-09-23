@@ -19,6 +19,13 @@ Tài liệu để **học kiến thức nền**, tách khỏi tài liệu mô t�
 | 5 | [HOC_FASTAPI_SSE.md](HOC_FASTAPI_SSE.md) | HTTP căn bản, FastAPI, pydantic, Server-Sent Events | đã làm |
 | 6 | [HOC_DOCKER.md](HOC_DOCKER.md) | Image/container, multi-stage, non-root, healthcheck, compose, volume | đã làm |
 | 7 | [HOC_PROMETHEUS.md](HOC_PROMETHEUS.md) | Counter/Gauge/Histogram, p95, PromQL, Grafana provisioning | đã làm |
+| 17 | [HOC_VAN_HANH_THAT.md](HOC_VAN_HANH_THAT.md) | **Đã đo vs CHƯA đo**, phân tích hỏng hóc từng bộ phận, 10x/100x cái gì vỡ trước, 6 thí nghiệm chạy được ngay | ⭐ senior hay hỏi |
+| 18 | [PHONG_VAN_MO_PHONG.md](PHONG_VAN_MO_PHONG.md) | Hội thoại phỏng vấn **đào tới đáy** — 6 buổi, gồm cả buổi "khi bạn KHÔNG biết" | ⭐ luyện nói |
+| 19 | [CHECKLIST_HIEU_SAU.md](CHECKLIST_HIEU_SAU.md) | Tự chấm 4 mức, bản đồ công nghệ, **10 con số phải thuộc** + **10 câu "chưa đo"** | ⭐ tự kiểm |
+| 15 | [HOC_LLM_NEN_TANG.md](HOC_LLM_NEN_TANG.md) | Model đoán chữ thế nào, **vì sao bịa**, token, temperature, structured output, **so 7 model đo thật** và cách giảm chi phí | ⭐ AI Engineer |
+| 16 | [HOC_FRONTEND_REACT.md](HOC_FRONTEND_REACT.md) | **Dự án SlangWord**: SPA, client vs server state, TanStack Query, giữ token ở đâu, **tự refresh token và bẫy chạy song song** | ⭐ Fullstack |
+| 13 | [HOC_AGENT_PATTERNS.md](HOC_AGENT_PATTERNS.md) | Chain / router / ReAct / plan-execute / reflexion / **multi-agent** — chọn kiểu nào và vì sao dự án này chọn ReAct | ⭐ AI Engineer |
+| 14 | [HOC_BACKEND_API.md](HOC_BACKEND_API.md) | **Dự án SlangWord**: phân tầng, REST + RFC 7807, **JWT + refresh token xoay vòng**, BCrypt, N+1, Flyway, index pg_trgm, Testcontainers | ⭐ Backend |
 | 12 | [HOC_BAO_MAT_AI_APP.md](HOC_BAO_MAT_AI_APP.md) | Bốn lỗ hổng kinh điển của app AI: rate limit, key ở frontend, row-level security, **công tắc ngắt** — dự án dính cái nào và vá thế nào | ⭐ hay bị hỏi |
 | 11 | [HOC_GIT_GITHUB.md](HOC_GIT_GITHUB.md) | Git vs GitHub, 3 vùng, nhánh, **Pull Request**, merge conflict, merge vs rebase, lỡ commit secret, 4 lỗi đã gặp thật trong repo này | ⭐ đi làm là dùng |
 | 10 | [HOC_CICD_CLOUD.md](HOC_CICD_CLOUD.md) | CI vs CD, Trivy, GHCR, tag SHA, **OIDC keyless**, Azure Container Apps, scale-to-zero, 5 lần deploy đỏ và cách lần ra lỗi | ⭐ mới, chưa vững |

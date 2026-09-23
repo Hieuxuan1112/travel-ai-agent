@@ -443,10 +443,11 @@ bạn hiểu, chứ không phải chỉ gọi thư viện.
 
 **"Kể tôi nghe về dự án của em."**
 > Em xây một ReAct agent trả lời câu hỏi du lịch. Model tự quyết gọi tool nào và theo thứ
-> tự nào — em có 2 tool: tìm kiếm RAG trên vector database và gọi API thời tiết thật. Đồ
-> thị LangGraph có 2 node, node LLM và node chạy tool, nối vòng lại nhau. Em viết nó hai
-> lần: một bản dựng tay để kiểm soát chi phí và metrics, một bản dùng `create_react_agent`
-> để đối chiếu. Nó chạy sau FastAPI có SSE streaming, đóng Docker, deploy lên Azure
+> tự nào — em có 3 tool: tìm kiếm RAG trên vector database, gọi API thời tiết thật, và xếp
+> hạng thị trấn bằng công thức tường minh. Đồ thị LangGraph có 2 node, node LLM và node chạy
+> tool, nối vòng lại nhau. Em viết nó ba lần: một bản dựng tay để kiểm soát chi phí và
+> metrics, một bản dùng `create_react_agent` để đối chiếu, và một biến thể planner+executor
+> qua subgraph. Nó chạy sau FastAPI có SSE streaming, đóng Docker, deploy lên Azure
 > Container Apps qua GitHub Actions, và mỗi lần release phải qua bộ eval trong CI.
 
 **"State trong LangGraph là gì?"**
@@ -497,4 +498,6 @@ Trả lời không nhìn tài liệu. Nếu bí câu nào, quay lại đúng m�
   [`persistence.py`](../../persistence.py) · [`metrics.py`](../../metrics.py)
 - Bài liên quan: [`HOC_VECTOR_DB.md`](HOC_VECTOR_DB.md) (RAG bên trong tool),
   [`HOC_PROMPT_ENGINEERING.md`](HOC_PROMPT_ENGINEERING.md) (viết description tool),
-  [`HOC_FASTAPI_SSE.md`](HOC_FASTAPI_SSE.md) (phục vụ agent qua HTTP)
+  [`HOC_FASTAPI_SSE.md`](HOC_FASTAPI_SSE.md) (phục vụ agent qua HTTP),
+  [`HOC_AGENT_PATTERNS.md`](HOC_AGENT_PATTERNS.md) mục 7 (subgraph thật: `main_05_multi_agent.py`
+  ghép graph này nguyên vẹn làm executor của một planner+executor)

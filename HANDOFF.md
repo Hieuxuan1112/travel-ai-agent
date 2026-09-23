@@ -80,28 +80,37 @@ hiện tại**, dùng lại đúng thiết kế trong file spec/plan đã có, t
 code cũ (conflict sẽ rất nhiều vì `api.py` đã đổi nhiều: `require_api_key`,
 `redis_client`, `app.state.agent`...).
 
-### 2.1b. Streamlit demo (`cornwall-travel-agent.streamlit.app`) — ĐANG SỬA, GẤP vì user demo bằng link này
+### 2.1b. Streamlit demo (`cornwall-travel-agent.streamlit.app`) — ĐÃ SỬA XONG, ĐÃ XÁC NHẬN SỐNG
 
-Trạng thái tại lúc ghi mục này: commit `feat(ui): let Streamlit switch
-between ReAct and Multi-agent modes` ĐÃ push lên `main`. Kiểm tra bằng trình
-duyệt thật thì app **SẬP** — `ValueError: Duplicated timeseries in
-CollectorRegistry` trong `metrics.py` (chi tiết ở mục 3, bug #4). Đã sửa
-xong, có test chặn tái phát, đang chờ merge nhánh
-`hotfix/prometheus-reimport-crash`.
+Trình tự đã xảy ra: push `feat(ui)` toggle ReAct/Multi-agent → mở link demo
+thật thì **SẬP** (`ValueError: Duplicated timeseries in CollectorRegistry`
+trong `metrics.py`, bug #4 ở mục 3) → sửa bằng `_metric()` (tra collector cũ
+trước khi tạo mới) → PR `hotfix/prometheus-reimport-crash` đã merge (commit
+`7fbe4f9`) → **mở lại link bằng trình duyệt thật, xác nhận: app KHÔNG còn
+sập, sidebar hiện đúng "Agent architecture" (ReAct/Multi-agent), `Conversation
+store: postgres` (dữ liệu thật, không phải giả), tool `search_travel_info` +
+`weather_forecast` hiện đúng.**
 
-Việc cần làm khi vào phiên mới:
-1. `git log origin/main -3` — xem commit hotfix `_metric()` đã merge chưa.
-   Nếu chưa: PR đang chờ ở `hotfix/prometheus-reimport-crash`, merge ngay,
-   đây là bug đang làm SẬP bản demo công khai.
-2. Sau khi merge, đợi Streamlit Cloud tự deploy lại (1-3 phút; app "ngủ" thì
-   bấm nút đánh thức).
-3. **Mở bằng trình duyệt thật** (mục 6 - HTTP 200 không nói lên gì). Trước
-   tiên xác nhận app KHÔNG còn màn đỏ lỗi. Sau đó xem sidebar có "Agent
-   architecture" (radio ReAct/Multi-agent) và 3 tool chưa. Thử hỏi thật một
-   câu so sánh 2 town ở cả 2 mode để xác nhận chạy đúng trên bản deploy.
-4. Không cần secret mới trên Streamlit Cloud — `main_05_multi_agent.py` dùng
-   chung `GOOGLE_API_KEY`; `redis_client.get_redis()` tự lùi về `None` an
-   toàn nếu không đặt `REDIS_URL`.
+Còn một việc CHƯA xác nhận được do giới hạn công cụ trình duyệt của phiên
+trước (trang chat của Streamlit Cloud có vẻ nằm trong iframe, `read_page`/
+`get_page_text` không đọc được nội dung bên trong, chỉ `screenshot` thấy):
+**chưa gửi thử một câu hỏi thật và xem câu trả lời trên chính bản deploy** (đã
+làm việc này thành công trên `localhost:8502` trước đó, nhưng KHÔNG PHẢI trên
+domain thật). Việc cần làm: mở `https://cornwall-travel-agent.streamlit.app/`
+bằng trình duyệt, gõ tay một câu (vd "What is the weather in St Ives?"), xác
+nhận có câu trả lời thật quay về — nếu công cụ tự động vẫn không tương tác
+được với textbox, nhờ user tự gõ thử và xác nhận lời.
+
+Việc còn lại (không khẩn, chỉ để hoàn thiện xác nhận):
+- Cuộn sidebar xuống xác nhận tool thứ 3 `rank_town_candidates` cũng hiện ra
+  (gần như chắc chắn có, vì sidebar chỉ lặp `lab.TOOLS` — nhưng chưa nhìn tận
+  mắt trên bản deploy).
+- Thử hỏi thật một câu so sánh 2 town ở **cả 2 mode** (ReAct và Multi-agent)
+  trên chính domain thật, không chỉ local, để có bằng chứng đầy đủ trước khi
+  demo cho người khác xem.
+- Không cần secret mới trên Streamlit Cloud — `main_05_multi_agent.py` dùng
+  chung `GOOGLE_API_KEY`; `redis_client.get_redis()` tự lùi về `None` an
+  toàn nếu không đặt `REDIS_URL`.
 
 ### 2.2. Việc lẻ khác (không gấp)
 

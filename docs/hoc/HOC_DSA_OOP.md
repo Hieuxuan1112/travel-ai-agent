@@ -65,6 +65,109 @@ còn lại.
 **Space complexity** là bộ nhớ phụ bạn cấp thêm, đếm theo cùng cách. Tạo một `dict` chứa n
 phần tử → O(n) bộ nhớ.
 
+### Đệ quy: đếm thế nào khi không có vòng `for`
+
+Đếm vòng lặp không dùng được cho đệ quy. Công thức thay thế:
+
+> **tổng chi phí = (số lần gọi) × (chi phí mỗi lần gọi)**
+
+Vẽ cây gọi ra là thấy ngay. Ba dạng hay gặp:
+
+**Dạng 1 — chia đôi, mỗi lần chỉ đi một nhánh → O(log n)**
+
+```python
+def binary_search(ds, x):
+    lo, hi = 0, len(ds) - 1
+    while lo <= hi:
+        mid = (lo + hi) // 2      # moi vong VUT BO mot nua
+        ...
+```
+
+n → n/2 → n/4 → … → 1. Hỏi *"chia đôi bao nhiêu lần thì còn 1?"* — đó chính là định nghĩa
+của log₂n. Với n = 1.000.000 thì chỉ **20 bước**.
+
+**Dạng 2 — chia đôi nhưng đi CẢ HAI nhánh → O(n log n)**
+
+```python
+def merge_sort(ds):
+    if len(ds) <= 1: return ds
+    mid = len(ds) // 2
+    trai  = merge_sort(ds[:mid])      # ca hai nhanh deu chay
+    phai  = merge_sort(ds[mid:])
+    return tron(trai, phai)           # tron ton O(n)
+```
+
+```
+tang 0:  [--------- n ---------]        gộp tốn n
+tang 1:  [--- n/2 ---][--- n/2 ---]     gộp tốn n
+tang 2:  [n/4][n/4][n/4][n/4]           gộp tốn n
+   ...                                   ...
+         → log n tầng, mỗi tầng tốn n  →  O(n log n)
+```
+
+**Mỗi tầng vẫn tốn đúng n** (chia nhỏ ra nhưng tổng không đổi), và có **log n tầng**. Nhân
+lại ra n log n. Đây là lý do mọi thuật toán sắp xếp so sánh tốt nhất đều dừng ở n log n.
+
+**Dạng 3 — mỗi lần gọi sinh ra hai lần gọi mới → O(2ⁿ)**
+
+```python
+def fib(n):
+    if n <= 1: return n
+    return fib(n-1) + fib(n-2)     # moi nut de ra HAI nut
+```
+
+Cây gọi nhân đôi mỗi tầng: 1 → 2 → 4 → 8 → … Với n = 50 là khoảng **10¹⁵ phép tính**.
+
+Chữa bằng **memoization** — nhớ kết quả đã tính:
+
+```python
+from functools import lru_cache
+
+@lru_cache(maxsize=None)
+def fib(n):
+    if n <= 1: return n
+    return fib(n-1) + fib(n-2)     # gio moi n chi tinh DUNG MOT LAN -> O(n)
+```
+
+**O(2ⁿ) → O(n)** chỉ bằng một dòng. Đổi lại tốn O(n) bộ nhớ để nhớ. Đây chính là ý tưởng nền
+của quy hoạch động ở mục 10.
+
+> **Mẹo nhận dạng nhanh trong phỏng vấn:**
+> - Vứt bỏ một nửa mỗi bước → `log n`
+> - Duyệt hết một lần → `n`
+> - Chia đôi và xử lý cả hai nửa → `n log n`
+> - Mỗi lần gọi đẻ ra ≥ 2 lần gọi, không nhớ kết quả → `2ⁿ` (gần như luôn cần memo)
+
+### Amortized: vì sao `dict` và `list.append` là O(1)
+
+Có lúc một thao tác **thỉnh thoảng** rất đắt, nhưng **trung bình qua nhiều lần** vẫn rẻ. Đó
+gọi là **amortized** (khấu hao).
+
+`list.append` là ví dụ rõ nhất. Mảng đầy thì Python phải cấp mảng mới **gấp đôi** rồi chép
+toàn bộ sang — lần đó tốn O(n). Nhưng vì mỗi lần lại gấp đôi, chuyện chép xảy ra **ngày càng
+thưa**:
+
+```
+sức chứa:  4 → 8 → 16 → 32 → 64 ...
+chép khi:  phần tử thứ 4, 8, 16, 32 ...   (thưa dần theo cấp số nhân)
+```
+
+Thêm n phần tử thì tổng chi phí chép là 4+8+16+…+n < 2n. Chia cho n lần append →
+**O(1) khấu hao**.
+
+Với `dict` cũng vậy: tra khoá là O(1) **trung bình**, nhưng **trường hợp xấu nhất là O(n)** khi
+mọi khoá đụng độ vào cùng một ô băm.
+
+| Cách nói | Nghĩa |
+|---|---|
+| O(1) **amortized** | Từng thao tác có thể đắt, **trung bình qua chuỗi thao tác** thì rẻ |
+| O(1) **trung bình** | Đắt hay rẻ tuỳ dữ liệu; dữ liệu bình thường thì rẻ |
+| O(1) **trường hợp xấu nhất** | Luôn luôn rẻ, không có ngoại lệ |
+
+> **Câu hỏi bẫy hay gặp:** *"dict là O(1), chắc chắn chứ?"* → Trả lời: **O(1) trung bình,
+> O(n) trường hợp xấu nhất** khi hash đụng độ hàng loạt. Thực tế gần như luôn là O(1) vì hàm
+> băm của Python tốt, nhưng biết ngoại lệ mới là hiểu.
+
 > **Trong phỏng vấn luôn nói cả hai:** *"Giải pháp này O(n) thời gian, O(n) bộ nhớ."*
 > Người phỏng vấn chờ đúng câu đó. Không nói là mất điểm dù code đúng.
 

@@ -10,7 +10,7 @@
 2. [Agent khác chatbot ở chỗ nào](#2-agent-khác-chatbot-ở-chỗ-nào)
 3. [Kiến trúc toàn cảnh](#3-kiến-trúc-toàn-cảnh)
 4. [Đi theo một câu hỏi từ đầu đến cuối](#4-đi-theo-một-câu-hỏi-từ-đầu-đến-cuối)
-5. [Hai công cụ của agent](#5-hai-công-cụ-của-agent)
+5. [Ba công cụ của agent](#5-ba-công-cụ-của-agent)
 6. [Tầng agent: LangGraph](#6-tầng-agent-langgraph)
 7. [RAG và vector store](#7-rag-và-vector-store)
 8. [MCP — cho agent mượn công cụ từ chương trình khác](#8-mcp--cho-agent-mượn-công-cụ-từ-chương-trình-khác)
@@ -110,12 +110,12 @@ biết tra thời tiết của cái gì. Đó là điều workflow cứng không
         │          └── hết tool_calls ──▶ trả lời, END    │
         └───────────────────┬─────────────────────────────┘
                             ▼
-        ┌──────────── HAI CÔNG CỤ ────────────┐
-        │  search_travel_info    weather_forecast │
-        └────────┬───────────────────┬────────────┘
-                 ▼                   ▼
-          Chroma (92 chunk)    Open-Meteo API
-          Wikivoyage           (thời tiết thật)
+        ┌──────────── BA CÔNG CỤ ────────────┐
+        │  search_travel_info  weather_forecast  rank_town_candidates │
+        └────────┬───────────────────┬───────────────────┬───────────┘
+                 ▼                   ▼                   ▼
+          Chroma (92 chunk)    Open-Meteo API      composite score
+          Wikivoyage           (thời tiết thật)    (Python thuần, không qua LLM)
 
         ┌─────── GIÁM SÁT ───────┐
         │ /metrics → Prometheus → Grafana │
@@ -131,15 +131,19 @@ khi phỏng vấn về kiến trúc.
 
 | File | Vai trò |
 |---|---|
-| `main_02_02.py` | **Trái tim.** 2 tool + đồ thị LangGraph dựng tay + vòng chat CLI |
+| `main_02_02.py` | **Trái tim.** 3 tool (`search_travel_info`, `weather_forecast`, `rank_town_candidates`) + đồ thị LangGraph dựng tay + vòng chat CLI |
 | `main_03_01.py` | Cùng agent nhưng dùng `create_react_agent` dựng sẵn — để so sánh |
-| `mcp_server.py` | Đóng 2 tool thành MCP server (giao thức chuẩn) |
+| `main_05_multi_agent.py` | Biến thể planner + executor: subgraph LangGraph tái sử dụng nguyên graph ReAct làm executor |
+| `mcp_server.py` | Đóng 3 tool thành MCP server (giao thức chuẩn) |
 | `main_04_mcp.py` | Agent lấy tool qua MCP thay vì import trực tiếp |
-| `api.py` | HTTP API: `/chat`, `/chat/stream` (SSE), `/metrics`, `/healthz`, `/docs` |
+| `api.py` | HTTP API: `/chat`, `/chat/stream` (SSE), `/metrics`, `/healthz`, `/docs`; auth `X-API-Key` opt-in |
 | `app.py` | Giao diện web Streamlit |
 | `metrics.py` | Định nghĩa các chỉ số Prometheus |
-| `evals/eval_agent.py` | Chấm điểm agent trên bộ 8 câu hỏi |
-| `tests/` | 81 test chạy offline |
+| `redis_client.py` | Rate-limit + cache thời tiết qua Redis khi có `REDIS_URL`, tự lùi về bộ nhớ khi không có |
+| `evals/eval_agent.py` | Chấm điểm agent trên bộ 32 câu hỏi |
+| `evals/eval_injection.py` | Bộ eval chống prompt injection, 5 ca adversarial |
+| `eval_history.py` | Lưu lịch sử các lần chạy eval (Postgres/SQLite) để xem xu hướng theo thời gian |
+| `tests/` | 141 test chạy offline |
 | `monitoring/` | Cấu hình Prometheus + dashboard Grafana |
 | `Dockerfile`, `docker-compose.yml` | Đóng gói và chạy cả hệ thống |
 
@@ -269,7 +273,7 @@ trình thay vì màn hình trắng 8 giây.
 
 ---
 
-## 5. Hai công cụ của agent
+## 5. Ba công cụ của agent
 
 ### Công cụ là gì, LLM "gọi" bằng cách nào
 
@@ -338,6 +342,42 @@ nguyên tắc thiết kế công cụ cho agent.
 
 **c) Sách dùng dữ liệu giả (random), sản phẩm này dùng API thật** (Open-Meteo, miễn phí,
 không cần API key). Bản giả vẫn giữ, bật bằng `WEATHER_MODE=mock` — hữu ích khi test.
+
+### Tool 3 — `rank_town_candidates` (thêm sau, để trả lời câu phỏng vấn đã vấp)
+
+**Vấn đề gốc:** khi phỏng vấn, có người hỏi *"sao chọn đúng hai thị trấn này, lỡ cả hai thời
+tiết xấu thì sao?"* — không trả lời được, vì lúc đó việc chọn thị trấn hoàn toàn nằm trong suy
+luận tự do của LLM, không có tiêu chí tường minh nào để chỉ ra.
+
+```python
+def _score_candidates(candidates, min_temp_c, max_temp_c, min_weather_fit, top_n) -> dict:
+    ...
+    composite = 0.4 * relevance + 0.6 * weather_fit
+    ...
+    meeting_threshold = [c for c in scored if c["weather_fit"] >= min_weather_fit]
+    relaxed = len(meeting_threshold) < top_n
+    pool = scored if relaxed else meeting_threshold
+    ...
+```
+
+**Điểm số tính bằng Python thuần, không qua LLM:** `composite = 0.4 × relevance (Chroma
+similarity) + 0.6 × weather-fit` (nhiệt độ trong khoảng mong muốn, không mưa/bão). Có ngưỡng
+tối thiểu (`min_weather_fit`); không đủ candidate đạt ngưỡng thì **tự nới** và trả về
+`relax_reason` để agent **nói rõ với user** đã nới điều kiện, kèm lý do — không âm thầm chọn
+đại.
+
+**Vì sao tool tự gọi lại `weather_forecast` thay vì nhận thời tiết làm tham số:** truyền kết
+quả `weather_forecast` trước đó qua LLM dưới dạng object lồng nhau không đáng tin — trên thực
+tế nó hay bị model làm phẳng/tóm tắt mất. Tốn thêm một lượt gọi, đổi lại dữ liệu đầu vào cho
+điểm số luôn đúng định dạng.
+
+**Bug thật tìm được khi ghép với `main_05_multi_agent.py`:** nếu không kèm nguyên dữ liệu thời
+tiết thô trong kết quả trả về, model tự gọi lại `weather_forecast` riêng cho từng town để lấy
+số — nhân đôi số tool call, có lúc chạm trần `MAX_TOOL_CALLS` trước khi kịp trả lời. Sửa bằng
+cách luôn kèm khoá `"weather"` đầy đủ trong mỗi candidate đã chấm điểm.
+
+**Số liệu:** eval case ép kịch bản fallback (*"colder than 0 degrees"*) chạy live: 9/9 pass,
+100% tool-selection. File: `main_02_02.py` (`rank_town_candidates`, `_score_candidates`).
 
 ---
 
@@ -647,7 +687,7 @@ Cách xử lý trong `mcp_server.py`: **chuyển hướng mọi log sang `stderr
 
 - Đổi server (viết ngôn ngữ khác, chạy máy khác, đội khác quản lý) mà **không sửa dòng nào**
   ở agent.
-- Mọi ứng dụng nói được MCP — Claude Desktop, Cursor — dùng lại được hai công cụ này ngay.
+- Mọi ứng dụng nói được MCP — Claude Desktop, Cursor — dùng lại được ba công cụ này ngay.
 
 **Mất:**
 
@@ -658,7 +698,7 @@ Cách xử lý trong `mcp_server.py`: **chuyển hướng mọi log sang `stderr
 | Khó gỡ lỗi hơn | Lỗi có thể ở agent, ở server, hoặc ở giữa đường |
 
 **Vậy khi nào nên dùng?** Khi công cụ **được nhiều nơi dùng chung**, hoặc do **đội khác sở
-hữu**, hoặc cần **cách ly**. Với một agent hai tool tự viết thì `import` thẳng là đủ — và đó
+hữu**, hoặc cần **cách ly**. Với một agent ba tool tự viết thì `import` thẳng là đủ — và đó
 chính là lý do repo này **giữ cả hai bản**: `main_02_02.py` import thẳng, `main_04_mcp.py`
 đi qua MCP.
 
@@ -836,7 +876,7 @@ nghiệp hay trên Azure đều **giống hệt nhau**.
 
 Ví dụ: container là **các căn hộ chung một toà nhà** (dùng chung móng, chung hệ thống nước);
 máy ảo là **xây riêng từng căn nhà độc lập**. Nhà riêng cách ly tốt hơn, nhưng đắt và chậm
-hơn rất nhiều. Với một agent hai tool, chung cư là đủ.
+hơn rất nhiều. Với một agent ba tool, chung cư là đủ.
 
 Image của dự án này **1,4 GB**, sửa code rồi build lại chỉ mất **~15 giây** — vì Docker chỉ
 làm lại phần đã đổi, không cài lại toàn bộ thư viện.
@@ -987,7 +1027,8 @@ Cách phần lớn người ta làm: gõ thử vài câu, thấy "có vẻ ổn"
 **Eval** giải bài này: một **bộ câu hỏi cố định** + **cách chấm cố định** = một con số so sánh
 được qua thời gian. Giống bài thi có đáp án, thay vì hỏi cảm nhận.
 
-`evals/eval_agent.py` chấm **8 câu hỏi cố định** theo **hai chỉ số**.
+`evals/eval_agent.py` chấm một **bộ câu hỏi cố định** (ban đầu 8 câu khi tìm ra và sửa lỗi ở
+mục 10.5, sau mở rộng lên **32 câu** — xem cuối mục 10.5) theo **hai chỉ số**.
 
 ### 10.2 Chỉ số 1 — Tool-selection accuracy (máy chấm, khách quan)
 
@@ -1042,13 +1083,17 @@ weather numbers", nên câu trả lời không có số bị trừ điểm — k
 khác. **Thước đo nào cũng có hình dạng riêng của nó**, và mục 10.5 là câu chuyện về đúng điều
 đó.
 
-### 10.4 Kết quả thật
+### 10.4 Kết quả thật (bộ 8 câu ban đầu, lúc tìm ra và sửa lỗi ở mục 10.5)
 
 | Chỉ số | Kết quả |
 |---|---|
 | Tool-selection accuracy | **100%** (8/8) |
 | Answer quality (1–5) | **4.6** |
 | Latency trung bình | 8,1 s |
+
+Con số **hiện tại**, sau khi mở bộ eval lên 32 câu (xem cuối mục 10.5): tool-selection
+**100% (32/32)**, answer quality **4.6/5**, latency trung bình **6,7 s**, chi phí
+**$0,94/1000 câu** — `evals/results.md`.
 
 ### 10.5 Câu chuyện đáng kể nhất: đo ra điểm yếu, truy nguyên nhân, sửa được
 
@@ -1107,6 +1152,16 @@ numbers next to each name.
 Ba ca còn lại được 4/5 đều là câu **chỉ tra RAG**, không có số thời tiết nào để trích — nên
 4.6 gần như là trần của rubric hiện tại.
 
+**Cập nhật sau đó — mở bộ eval từ 8 lên 32 câu:** 8 câu là quá ít để tin cậy thật, và không
+còn khớp số liệu trên CV. Thêm 24 ca đa dạng thật — nhiều town khác nhau (Padstow, Truro, Bude,
+Fowey, Looe, Mousehole, Tintagel, Eden Project...), nhiều loại câu hỏi (tra cứu, thời tiết đơn,
+so sánh, edge case town không tồn tại) — không phải đổi tên town trong cùng một mẫu câu. Kết
+quả trên bộ 32: **100% tool-selection, 4.6/5 answer quality không đổi** — xác nhận bản sửa ở
+trên vẫn đứng vững khi kiểm tra rộng hơn. Chi phí đo lại còn **$0,94/1000 câu** (giảm từ $1,13
+nhờ sửa một bug hiệu năng thật trong `rank_town_candidates` — tool này thiếu số liệu thời tiết
+thô nên model tự gọi lại `weather_forecast`, có lúc cạn `MAX_TOOL_CALLS` và trả lời rỗng; xem
+mục 5). File: `evals/eval_agent.py`.
+
 ### 10.6 Cổng chặn hồi quy trong CI
 
 **"Hồi quy" (regression)** nghĩa là: thứ đang chạy tốt bỗng hỏng vì một thay đổi mới. Ví dụ
@@ -1152,8 +1207,8 @@ bỏ qua trong trường hợp đó.
 
 ### 11.1 Vì sao test ở dự án LLM khó hơn bình thường
 
-Dự án này có **81 test, chạy hoàn toàn offline** — không gọi mạng, không cần API key, xong
-trong **~14 giây**. Con số 16 giây đó không phải tình cờ, và mục này giải thích cái giá phải
+Dự án này có **141 test, chạy hoàn toàn offline** — không gọi mạng, không cần API key, xong
+trong **~25 giây**. Con số đó không phải tình cờ, và mục này giải thích cái giá phải
 trả để có nó.
 
 ### 11.2 Vấn đề riêng của sản phẩm LLM
@@ -1231,7 +1286,7 @@ sạch, cài thư viện, rồi chạy:
 | Bước | Bắt lỗi gì |
 |---|---|
 | `ruff check` (lint) | Code lộn xộn, import thừa, lỗi cú pháp tiềm ẩn |
-| `pytest` | 81 test ở trên |
+| `pytest` | 141 test ở trên |
 
 **Máy sạch mới là điểm quan trọng.** Nó không có thư viện bạn lỡ cài tay trên máy mình, không
 có file `.env` của bạn. Nên CI bắt được đúng loại lỗi *"trên máy tôi chạy được"* — thứ mà tự
@@ -1254,14 +1309,16 @@ Học thuộc bảng này là trả lời được phần lớn câu hỏi đị
 | Kho kiến thức | 4 trang Wikivoyage → **92 chunk**, 3,3 MB |
 | Cắt chunk | 1024 ký tự, chồng lấn 128 |
 | Model | `gemini-3.1-flash-lite` + `gemini-embedding-001` |
-| Tool-selection accuracy | **100%** (8/8 ca) |
-| Answer quality (LLM-judge) | **4.6/5** (trước khi sửa prompt: 3.5 — xem mục 10) |
-| Latency trung bình | 8,1 s (8 ca eval) |
-| **p95 latency** | **7,55 s** (Prometheus) |
-| Chi phí | **$0,0035 cho 5 request** ≈ $0,0007/câu (Prometheus); bộ eval nhiều tool hơn nên tốn **$1,39 cho 1000 câu** |
+| Tool-selection accuracy | **100%** (32/32 ca) |
+| Answer quality (LLM-judge) | **4.6/5** (trước khi sửa prompt trên bộ 8 ca đầu: 3.5 — xem mục 10) |
+| Latency trung bình | 6,7 s (32 ca eval) |
+| **p95 latency** | **7,55 s** (Prometheus, production); **7,6 s** (load test `/chat` thật, Locust) |
+| Chi phí | **$0,94 cho 1000 câu** (`evals/results.md`, giảm từ $1,13 nhờ sửa `rank_town_candidates`) |
+| Injection-refusal (adversarial) | **5/5**, 0/5 rò rỉ thật (`evals/eval_injection.py`, 5 ca) |
+| Throughput hạ tầng (baseline) | **137 req/s**, p95 39ms, 0% lỗi (Locust, `/healthz`, 50 user) |
 | Token (2 câu hỏi) | 5.633 vào / 261 ra, qua **6 lần gọi model** |
-| Test | **81**, offline, ~14 s |
-| Giới hạn tần suất | 30 câu/IP/giờ (mặc định), trả `429` + `Retry-After` |
+| Test | **141**, offline, ~25 s |
+| Giới hạn tần suất | 30 câu/IP/giờ (mặc định), trả `429` + `Retry-After`; Redis khi có `REDIS_URL` |
 | Docker image | 1,4 GB; build đầu 3 phút 50, rebuild ~15 giây |
 | Số dịch vụ trong compose | 4 (api, ui, prometheus, grafana) |
 
@@ -1433,9 +1490,9 @@ Nói ra được giới hạn là dấu hiệu của người hiểu hệ thốn
 | Kho kiến thức chỉ 4 trang về Cornwall | Hỏi vùng khác là không có dữ liệu |
 | Lịch sử gửi cho model bị cắt còn 30 message | Checkpointer giữ nguyên toàn bộ hội thoại (mục 21), nhưng hỏi lại chuyện của 20 lượt trước thì model không còn thấy |
 | Chỉ tìm theo vector, chưa hybrid | Tên riêng/số hiệu tìm kém hơn nếu có thêm BM25 |
-| Không chống prompt injection | Nội dung Wikivoyage là input không tin cậy |
-| Rate limit đếm trong bộ nhớ | Đúng với một instance; chạy nhiều bản sao phải chuyển sang Redis |
-| Eval chỉ 8 ca | Đủ để phát hiện hồi quy lớn, chưa đủ kết luận mạnh |
+| Injection gián tiếp qua Wikivoyage | Nội dung web là input không tin cậy, đã rào bằng `<untrusted_documents>` (mục 7.7); injection **trực tiếp** từ user có eval riêng (5/5 refusal, `evals/eval_injection.py`) |
+| Rate limit đếm trong bộ nhớ theo mặc định | Đúng với một instance; chuyển sang Redis khi bật `REDIS_URL` (`redis_client.py`) — bản Azure hiện tại là image cũ, chưa bật |
+| Eval 32 ca | Khá hơn 8 ca ban đầu, đủ để phát hiện hồi quy lớn, vẫn chưa đủ lớn để kết luận mạnh |
 | Bộ đếm metrics reset khi restart | Bình thường với Prometheus, nhưng cần biết |
 
 ---
@@ -1491,7 +1548,7 @@ Nói ra được giới hạn là dấu hiệu của người hiểu hệ thốn
     và LLM-as-judge (4.6/5). Kèm chuyện ca 2/5 đã truy ra và sửa được để cho thấy hai chỉ
     số bổ sung nhau.
 20. *Test hệ thống có LLM kiểu gì?* → Thay agent và API ngoài bằng đồ giả, test hợp đồng:
-    đúng thứ tự sự kiện, đúng schema, đúng mã lỗi. 81 test chạy offline trong 14 giây.
+    đúng thứ tự sự kiện, đúng schema, đúng mã lỗi. 141 test chạy offline trong ~25 giây.
 
 **Về vận hành**
 
@@ -1528,7 +1585,7 @@ docker compose up -d
    đây là 3.5 vì hai ca nhiều bước chỉ được 2/5 — tôi cô lập được nguyên nhân bằng thí
    nghiệm rồi sửa, đây là phần tôi thích nhất trong dự án."
 
-Kết bằng một câu: *"Toàn bộ chạy bằng một lệnh `docker compose up`, có 81 test và CI."*
+Kết bằng một câu: *"Toàn bộ chạy bằng một lệnh `docker compose up`, có 141 test và CI."*
 
 ---
 
@@ -1653,14 +1710,17 @@ Vì vậy phải đọc `X-Forwarded-For`.
 
 **Cảnh báo phải nói ra nếu bị hỏi:** header này do client tự đặt được, nên **không dùng để
 chống tấn công có chủ đích**. Nó chỉ chặn lạm dụng thông thường. Muốn chống thật thì phải
-xác thực bằng API key hoặc dùng rate limit ở tầng hạ tầng.
+xác thực bằng API key hoặc dùng rate limit ở tầng hạ tầng — **đã thêm sau đó**: `api.py` có
+xác thực `X-API-Key` opt-in qua biến `API_KEYS`, không đặt biến thì API vẫn công khai như cũ.
 
-### Giới hạn của cách làm hiện tại
+### Giới hạn của cách làm hiện tại — và cách đã vá
 
-Bộ đếm nằm **trong bộ nhớ tiến trình**. Hệ quả: restart là mất bộ đếm, và nếu chạy nhiều
-bản sao thì mỗi bản đếm riêng (3 instance × 30 = thực tế 90 câu/giờ). Đúng với quy mô hiện
-tại; muốn chính xác khi scale thì chuyển bộ đếm sang Redis — logic không đổi, chỉ đổi chỗ
-lưu.
+Mặc định bộ đếm nằm **trong bộ nhớ tiến trình**. Hệ quả: restart là mất bộ đếm, và nếu chạy
+nhiều bản sao thì mỗi bản đếm riêng (3 instance × 30 = thực tế 90 câu/giờ). **Đã vá**:
+`redis_client.py` chuyển bộ đếm sang **Redis sorted set** khi có `REDIS_URL` — cùng thuật
+toán cửa sổ trượt, chỉ đổi chỗ lưu, kiểm chứng với container Redis thật (đúng 3 entry sau 3
+request). Không có `REDIS_URL` thì tự lùi về bộ nhớ như cũ. Bản Azure hiện tại là image cũ,
+chưa bật biến này.
 
 ### Bằng chứng chạy thật
 
@@ -1977,7 +2037,7 @@ bên ngoài**.
 
 | Câu hỏi | Trả lời |
 |---|---|
-| Vì sao không Kubernetes (AKS)? | Một agent hai tool **không cần** Kubernetes. AKS còn không có free tier. Container Apps cho scale-to-zero, ingress HTTPS sẵn, không phải quản node nào |
+| Vì sao không Kubernetes (AKS)? | Một agent ba tool **không cần** Kubernetes. AKS còn không có free tier. Container Apps cho scale-to-zero, ingress HTTPS sẵn, không phải quản node nào |
 | Vì sao Azure chứ không GCP? | **Azure for Students**: $100 credit, **không cần thẻ**. Hết credit thì Microsoft **khoá subscription** chứ không tính tiền. GCP bắt gắn thẻ và **không có hard cap**, chỉ có cảnh báo ngân sách |
 | Vì sao $0/tháng? | `min-replicas 0`: không ai dùng thì **không có replica nào chạy**. Nằm trọn trong free grant (180.000 vCPU-giây + 360.000 GiB-giây + 2 triệu request) |
 
@@ -2063,7 +2123,7 @@ nhau 15 giây — cold start có thể lâu, nhưng **không trả 200 thì CD �
 6. *OIDC keyless là gì, hơn gì client secret?* → GitHub phát token sống 1 tiếng, Azure kiểm
    đúng repo/nhánh rồi đổi lấy credential ngắn hạn. **Không có mật khẩu dài hạn nào được
    lưu.** Cần `permissions: id-token: write` thì GitHub mới phát token.
-7. *Vì sao Container Apps chứ không Kubernetes?* → Một agent hai tool không cần Kubernetes;
+7. *Vì sao Container Apps chứ không Kubernetes?* → Một agent ba tool không cần Kubernetes;
    AKS không có free tier. Container Apps cho scale-to-zero và ingress HTTPS sẵn.
 8. *Deploy của bạn tốn bao nhiêu?* → **$0**, nhờ `min-replicas 0` + Azure for Students (hard
    cap, không cần thẻ). Đánh đổi là cold start **~15-20 giây** ở request đầu; sản phẩm thật

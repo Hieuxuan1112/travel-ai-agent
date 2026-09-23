@@ -158,7 +158,7 @@ hơn nhưng có lúc phải làm tay một bước.
 | Free tier | Có | Không |
 | Hợp với | dịch vụ nhỏ, ít lưu lượng | hệ thống lớn, nhiều dịch vụ |
 
-Một agent hai tool **không cần Kubernetes**. Chọn AKS cho project này là dùng dao mổ trâu
+Một agent ba tool **không cần Kubernetes**. Chọn AKS cho project này là dùng dao mổ trâu
 giết gà — và tốn tiền thật.
 
 ### `min-replicas = 0`: mấu chốt của $0/tháng

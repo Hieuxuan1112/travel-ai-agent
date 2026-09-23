@@ -254,7 +254,11 @@ D:\langgraph-agent-lab\venv\Scripts\python.exe D:\langgraph-agent-lab\api.py
 3. Chạy `curl -N "http://127.0.0.1:8000/chat/stream?q=weather in Da Nang"` — thấy đúng text thô của giao thức.
 4. Gửi câu hỏi 2 ký tự → nhận 422. Đọc kỹ nội dung lỗi pydantic trả về.
 5. **Bài tập sửa code**: thêm endpoint `GET /tools` trả về danh sách tool và mô tả của chúng (gợi ý: `lab.TOOLS`, mỗi tool có `.name` và `.description`).
-6. **Bài tập khó hơn**: thêm giới hạn 10 câu/IP mỗi giờ (một `dict` trong bộ nhớ là đủ), trả `429 Too Many Requests` khi vượt. Đây chính là thứ cần trước khi deploy công khai.
+6. **Bài tập khó hơn** — ĐÃ LÀM THẬT trong `api.py` (đừng làm lại, đọc để hiểu): giới hạn theo
+   IP bằng cửa sổ trượt (`deque`), trả `429 Too Many Requests` + `Retry-After`, và bộ đếm
+   chuyển sang Redis khi có `REDIS_URL` để nhiều instance chia sẻ đúng một giới hạn. Chi tiết ở
+   [HOC_BAO_MAT_AI_APP.md](HOC_BAO_MAT_AI_APP.md) mục 2. Bài tập thật sự còn mở: thêm auth theo
+   API key (đã có `X-API-Key`/`API_KEYS`, opt-in) thành **bắt buộc** thay vì tuỳ chọn.
 7. **Bài tập nâng cao**: chuyển `/chat/stream` sang POST + `fetch()`/`ReadableStream` ở client, để câu hỏi dài không bị giới hạn độ dài URL.
 
 ---

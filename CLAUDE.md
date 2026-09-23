@@ -4,12 +4,16 @@
 
 ## Dự án là gì
 
-Agent ReAct hai tool, dùng làm **dự án chủ lực trên CV** của một sinh viên sắp ra
+Agent ReAct ba tool, dùng làm **dự án chủ lực trên CV** của một sinh viên sắp ra
 trường đang apply vị trí AI Engineer fresher. Mọi quyết định kỹ thuật phục vụ hai mục
 tiêu: (1) chạy thật, kiểm chứng được; (2) **user giải thích được khi phỏng vấn**.
 
 - `search_travel_info` — RAG trên Wikivoyage (Chroma)
 - `weather_forecast` — thời tiết thật, Open-Meteo
+- `rank_town_candidates` — xếp hạng thị trấn bằng composite score tường minh (không qua LLM)
+
+Có thêm biến thể multi-agent (`main_05_multi_agent.py`, planner + executor qua LangGraph
+subgraph) bên cạnh agent ReAct chính.
 
 ## Bản đồ file
 
@@ -17,16 +21,20 @@ tiêu: (1) chạy thật, kiểm chứng được; (2) **user giải thích đư
 |---|---|
 | `main_02_02.py` | State graph LangGraph tự nối tay (bản chính để học) |
 | `main_03_01.py` | Bản prebuilt ReAct — cùng tool, ít code hơn |
+| `main_05_multi_agent.py` | Biến thể planner + executor, executor tái sử dụng nguyên `main_02_02.py` qua subgraph |
 | `main_04_mcp.py`, `mcp_server.py` | Cùng bộ tool phơi qua MCP |
 | `app.py` | Streamlit UI, có checkpointer + thread_id trên URL |
-| `api.py` | FastAPI, có SSE streaming, rate limit, `/healthz` |
+| `api.py` | FastAPI, có SSE streaming, rate limit, API key (`X-API-Key`) opt-in, `/healthz` |
 | `persistence.py` | Chọn checkpointer: có `DATABASE_URL` thì Postgres, không thì in-memory |
+| `redis_client.py` | Rate-limit + cache thời tiết qua Redis khi có `REDIS_URL`, tự lùi về bộ nhớ khi không có |
 | `retrieval.py` | Vector search, có BM25+RRF (tắt mặc định — đo thấy không lợi) |
 | `metrics.py` | Prometheus: p95, lỗi theo tool, token, cost/query |
-| `evals/` | `eval_agent.py` (8 case), `eval_retrieval.py` (12 case), `compare_models.py` |
+| `evals/` | `eval_agent.py` (32 case), `eval_retrieval.py` (12 case), `eval_injection.py` (5 case), `compare_models.py` |
+| `eval_history.py` | Lưu lịch sử các lần chạy eval (Postgres/SQLite) để xem xu hướng theo thời gian |
+| `loadtest/` | Locust: baseline hạ tầng + `/chat` thật, xem `loadtest/results.md` |
 | `docs/MENTOR.md` | Sản phẩm chạy thế nào |
 | `docs/DEPLOY.md` | Hạ tầng: Docker, CD, Azure |
-| `docs/hoc/` | 10 tài liệu học + 4 demo chạy được |
+| `docs/hoc/` | ~20 tài liệu học + 4 demo chạy được |
 
 ## Quyết định đã chốt — đừng lật lại nếu không được yêu cầu
 

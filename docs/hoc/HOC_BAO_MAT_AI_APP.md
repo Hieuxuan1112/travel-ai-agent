@@ -34,9 +34,9 @@ trần**. Đây là ba khác biệt khiến bốn lỗ hổng dưới đây nguy
 | Trần thiệt hại | Server sập rồi thôi | Hoá đơn chạy tiếp cho tới khi hết hạn mức thẻ |
 | Ai chịu | Bạn mất uptime | Bạn **mất tiền** |
 
-Với dự án này, chi phí đo được là **$1,39 cho 1000 câu hỏi**. Nghe rẻ. Nhưng một script gọi
-50 request/giây trong một đêm là **4,3 triệu request** — khoảng **$6.000**. Đó là lý do bốn
-mục dưới đây không phải "nice to have".
+Với dự án này, chi phí đo được là **$0,94 cho 1000 câu hỏi** (`evals/results.md`). Nghe rẻ.
+Nhưng một script gọi 50 request/giây trong một đêm là **4,3 triệu request** — khoảng **$4.100**.
+Đó là lý do bốn mục dưới đây không phải "nice to have".
 
 ---
 
@@ -147,12 +147,25 @@ SESSION_LIMIT_PER_HOUR  = 20    # hạn mức theo PHIÊN: giữ công bằng
 hai thứ khác nhau.** Lớp phiên không chống được kẻ tấn công, nhưng nó ngăn một người dùng vô
 tình chiếm hết ngân sách chung.
 
-### Giới hạn còn lại
+### Giới hạn còn lại — và cách đã vá
 
-Bộ đếm nằm **trong bộ nhớ tiến trình**. Hệ quả: restart là mất bộ đếm, và nếu chạy nhiều bản
-sao thì mỗi bản đếm riêng (`max-replicas 2` → thực tế gấp đôi giới hạn). Đúng với quy mô hiện
-tại; muốn chính xác khi scale thì chuyển bộ đếm sang Redis — **logic không đổi, chỉ đổi chỗ
-lưu**.
+Mặc định bộ đếm nằm **trong bộ nhớ tiến trình**: restart là mất bộ đếm, chạy nhiều bản sao thì
+mỗi bản đếm riêng (`max-replicas 2` → thực tế gấp đôi giới hạn). **Đã vá**: `redis_client.py`
+chuyển bộ đếm sang **Redis sorted set** khi có biến môi trường `REDIS_URL` — cùng thuật toán
+cửa sổ trượt, chỉ đổi chỗ lưu, nên các máy chia sẻ đúng một bộ đếm. Không có `REDIS_URL` thì tự
+lùi về bộ nhớ như cũ — không đổi hành vi bản đang chạy nếu chưa cần Redis. Bản Azure hiện tại
+là image cũ, **chưa bật** biến này.
+
+### Lớp phòng thủ mới: API key (opt-in)
+
+Sau bản viết đầu của tài liệu này, `api.py` có thêm xác thực: header `X-API-Key`, bật qua biến
+môi trường `API_KEYS` (danh sách, phân tách dấu phẩy). Đây là lớp đứng **trước** rate limit —
+request không có key hợp lệ nhận `401` ngay, không tốn một lượt trong bộ đếm.
+
+Điểm thiết kế đáng nói: **không đặt `API_KEYS` thì API vẫn công khai như cũ** — tắt mặc định để
+không phá bản đang chạy thật trên Azure (image cũ vẫn hoạt động bình thường, chưa có key nào).
+Đây là cùng nguyên tắc với công tắc ngắt ở mục 5: thêm bảo vệ mới không được kèm rủi ro làm
+hỏng bản đang chạy.
 
 ---
 
@@ -400,13 +413,15 @@ không có RLS, vừa không có công tắc theo người dùng, vừa phải r
 
 | # | Lỗ hổng | Trạng thái | Cơ chế |
 |---|---|:-:|---|
-| 1 | Không rate limit | ✅ | Cửa sổ trượt theo IP (`api.py`) + ngân sách toàn cục & hạn mức phiên (`app.py`) |
+| 1 | Không rate limit | ✅ | Cửa sổ trượt theo IP (`api.py`, Redis khi có `REDIS_URL` else bộ nhớ) + ngân sách toàn cục & hạn mức phiên (`app.py`) |
 | 2 | Gọi AI từ frontend | ✅ | Cả hai lối vào chạy server-side; key chưa từng vào git; Container Apps secret |
 | 3 | Không có RLS | ⚠️ **Một phần** | Capability URL (UUID4 122 bit) + ép định dạng UUID. **RLS thật cần đăng nhập** |
 | 4 | Không có công tắc ngắt | ✅ | `AI_ENABLED=0` → 503, đổi bằng một lệnh `az`, `/healthz` vẫn xanh |
+| 5 | Không xác thực caller | ✅ **opt-in** | Header `X-API-Key`, bật qua `API_KEYS`; không đặt biến thì vẫn công khai như cũ |
 
 Điểm còn mở có chủ ý: **CORS `*`** (demo công khai) và **`/metrics` mở** (lộ số liệu vận hành
-như token, chi phí — không lộ dữ liệu người dùng).
+như token, chi phí — không lộ dữ liệu người dùng). Bản đang chạy trên Azure là image cũ, **chưa
+bật** Redis lẫn `API_KEYS` — cả hai cần build+deploy lại mới có hiệu lực ở đó.
 
 > **Cách nói trong phỏng vấn:** đừng nói *"dự án của em bảo mật"*. Hãy nói *"em rà bốn lỗ hổng
 > này, ba cái đã chặn và có test, cái thứ ba em dùng capability URL vì chưa có đăng nhập — em
@@ -515,7 +530,13 @@ chặn**.
 6. *Chỗ nào trong hệ thống của bạn còn hở?* → CORS đang `*` và `/metrics` mở — cả hai là lựa
    chọn có chủ ý cho demo, và tôi biết cái giá. Chỗ hở thật là **không có danh tính người
    dùng**: nó kéo theo không có RLS, không tắt được theo từng người, và phải rate limit theo IP
-   là thứ giả được.
+   là thứ giả được. Tôi có thêm `X-API-Key` opt-in để giải quyết một phần — nhưng bản đang chạy
+   trên Azure là image cũ, chưa bật.
+
+7. *Rate limit của bạn có sống sót khi scale nhiều instance không?* → Mặc định không — bộ đếm
+   nằm trong bộ nhớ mỗi tiến trình. Tôi đã thêm đường lui sang **Redis sorted set** (cùng thuật
+   toán cửa sổ trượt, chỉ đổi chỗ lưu) khi có `REDIS_URL`, kiểm chứng bằng container Redis thật
+   chứ không chỉ giả lập.
 
 ---
 

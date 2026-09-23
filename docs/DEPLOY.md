@@ -221,7 +221,7 @@ Mục 7 ở trên viết "chưa làm vì yêu cầu là không tốn đồng nà
 
 ### Vì sao Container Apps chứ không phải AKS
 
-Một agent hai tool không cần Kubernetes. AKS còn không có free tier. Container Apps
+Một agent ba tool không cần Kubernetes. AKS còn không có free tier. Container Apps
 cho scale-to-zero, ingress HTTPS sẵn, và không phải quản node nào.
 
 ### Xác thực: OIDC keyless, không có key dài hạn
