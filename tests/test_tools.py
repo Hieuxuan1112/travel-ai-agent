@@ -182,13 +182,16 @@ def test_existing_but_empty_store_directory_triggers_a_rebuild(monkeypatch, tmp_
     monkeypatch.setattr(lab, "build_vectorstore", lambda dests: rebuilt.append(dests) or "REBUILT")
 
     assert lab.get_travel_info_vectorstore() == "REBUILT"
-    assert rebuilt == [lab.UK_DESTINATIONS]
+    assert rebuilt == [lab.TRAVEL_DESTINATIONS]
 
 
 def test_both_tools_are_registered_with_descriptions():
     """Mo ta tool la thu LLM dua vao de chon tool -> khong duoc de trong."""
     names = {t.name for t in lab.TOOLS}
-    assert names == {"search_travel_info", "weather_forecast", "rank_town_candidates"}
+    assert names == {
+        "search_travel_info", "weather_forecast", "rank_town_candidates",
+        "web_search", "convert_currency", "translate_text",
+    }
     for tool in lab.TOOLS:
         assert len(tool.description) > 30
 
@@ -351,3 +354,84 @@ def test_rank_town_candidates_tool_tra_ve_dung_cau_truc(monkeypatch):
 
 def test_rank_town_candidates_tool_co_trong_danh_sach_tool():
     assert lab.rank_town_candidates in lab.TOOLS
+
+
+DUCKDUCKGO_HTML = """
+<div class="result__body">
+  <a class="result__title">St Ives beaches guide</a>
+  <a class="result__snippet">Sandy beaches and surf spots.</a>
+  <a class="result__url">example.org/st-ives</a>
+</div>
+"""
+
+
+class _FakeHtmlResponse:
+    def __init__(self, text):
+        self.text = text
+
+    def raise_for_status(self):
+        pass
+
+
+def test_web_search_parses_duckduckgo_results(monkeypatch):
+    monkeypatch.setattr(lab.requests, "post", lambda *a, **k: _FakeHtmlResponse(DUCKDUCKGO_HTML))
+
+    result = lab.web_search.invoke({"query": "St Ives beaches"})
+
+    assert "St Ives beaches guide" in result
+    assert "example.org/st-ives" in result
+    assert result.startswith('<untrusted_documents source="web"')
+
+
+def test_web_search_network_failure_returns_message_not_exception(monkeypatch):
+    def boom(*args, **kwargs):
+        raise ConnectionError("network down")
+
+    monkeypatch.setattr(lab.requests, "post", boom)
+    result = lab.web_search.invoke({"query": "anything"})
+
+    assert "failed" in result.lower()
+
+
+def test_convert_currency_returns_converted_amount(monkeypatch):
+    monkeypatch.setattr(
+        lab.requests, "get",
+        lambda *a, **k: _FakeResponse({"rates": {"EUR": 92.0}, "date": "2026-09-23"}),
+    )
+
+    result = lab.convert_currency.invoke({"amount": 100, "from_currency": "usd", "to_currency": "eur"})
+
+    assert result == {
+        "amount": 100, "from": "USD", "to": "EUR",
+        "converted": 92.0, "date": "2026-09-23", "source": "frankfurter.app",
+    }
+
+
+def test_convert_currency_unknown_code_returns_structured_error(monkeypatch):
+    monkeypatch.setattr(lab.requests, "get", lambda *a, **k: _FakeResponse({"rates": {}}))
+
+    result = lab.convert_currency.invoke({"amount": 10, "from_currency": "USD", "to_currency": "XXX"})
+
+    assert "error" in result
+
+
+def test_translate_text_returns_translation(monkeypatch):
+    monkeypatch.setattr(
+        lab.requests, "get",
+        lambda *a, **k: _FakeResponse({"responseData": {"translatedText": "Xin chao"}}),
+    )
+
+    result = lab.translate_text.invoke({"text": "Hello", "target_lang": "vi"})
+
+    assert result["translated"] == "Xin chao"
+    assert result["target_lang"] == "vi"
+
+
+def test_translate_text_service_failure_is_structured_error(monkeypatch):
+    def boom(*args, **kwargs):
+        raise ConnectionError("network down")
+
+    monkeypatch.setattr(lab.requests, "get", boom)
+    result = lab.translate_text.invoke({"text": "Hello", "target_lang": "vi"})
+
+    assert "error" in result
