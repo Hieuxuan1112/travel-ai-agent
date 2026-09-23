@@ -13,6 +13,8 @@ from pathlib import Path
 import streamlit as st
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
+import tts
+
 st.set_page_config(page_title="Cornwall Travel Agent", page_icon="🏖️", layout="centered")
 
 PROJECT_DIR = Path(__file__).parent
@@ -305,13 +307,20 @@ if prompt := (st.chat_input("e.g. Suggest two Cornwall beach towns with nice wea
             f"{tool_calls} tool call(s) · {time.time() - started:.1f}s · model {lab.CHAT_MODEL}"
         )
         if final_answer:
-            # TTS cung bang Web Speech API, cung ly do voi mic o tren: khong
-            # key, khong phi. height=1 vi khong co gi de hien, chi chay script.
-            st.iframe(
-                f"<script>speechSynthesis.cancel();"
-                f"speechSynthesis.speak(new SpeechSynthesisUtterance({json.dumps(final_answer)}));"
-                f"</script>",
-                height=1,
-            )
+            # Doc bang giong Gemini TTS that (tra phi qua GOOGLE_API_KEY) - chat
+            # luong tot hon han giong may cua trinh duyet. Goi mang that bai
+            # (het quota, mang hong...) thi tts.synthesize() tra None, lui ve
+            # speechSynthesis mien phi cua trinh duyet de nguoi dung van nghe
+            # duoc cau tra loi, chi la giong kem hon.
+            audio_bytes = tts.synthesize(final_answer)
+            if audio_bytes:
+                st.audio(audio_bytes, format="audio/wav", autoplay=True)
+            else:
+                st.iframe(
+                    f"<script>speechSynthesis.cancel();"
+                    f"speechSynthesis.speak(new SpeechSynthesisUtterance("
+                    f"{json.dumps(final_answer)}));</script>",
+                    height=1,
+                )
 
     st.session_state.messages.append({"role": "assistant", "content": final_answer})
