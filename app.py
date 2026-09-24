@@ -510,9 +510,9 @@ with chat_col:
     # vao ben trong. Cach lam: (1) CSS danh rieng padding-right cho textarea de
     # chua cho, (2) chinh iframe cua nut mic thanh position:fixed, tu tinh toa
     # do de "do" vao khoang trong do, canh chinh no moi khi bo cuc doi (mo/dong
-    # sidebar, resize). ponytail: dinh vi bang setInterval polling toa do thay
-    # vi ResizeObserver/MutationObserver day du - don gian hon nhieu, chi tra
-    # gia mot khoang tre <=300ms khi resize. Nang cap neu thay giat hinh.
+    # sidebar, resize, cuon). ponytail: dinh vi bang vong requestAnimationFrame
+    # doc toa do moi frame thay vi ResizeObserver/MutationObserver day du - don
+    # gian hon nhieu, ton mot ti CPU. Nang cap neu thay nang may.
     # -----------------------------------------------------------------------
     st.markdown(
         """
@@ -597,8 +597,9 @@ with chat_col:
             border: "0",
           });
         }
-        positionOverChatInput();
-        setInterval(positionOverChatInput, 300);
+        // rAF (moi frame) thay vi setInterval 300ms: cuon trang thi thanh chat
+        // doi cho ngay, interval lam nut tre nhip va "nhay" theo sau.
+        (function loop() { positionOverChatInput(); requestAnimationFrame(loop); })();
         </script>
         """,
         height=1,
